@@ -66,8 +66,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void dispose() {
     SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     _chewieController?.dispose();
