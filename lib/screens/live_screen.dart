@@ -62,7 +62,7 @@ class _LiveScreenState extends State<LiveScreen> {
             : ListView.builder(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 itemCount: _categories.length,
-                itemBuilder: (_, i) => _CatTile(
+                itemBuilder: (_, i) => CatTile(
                   name: _categories[i].name,
                   isSelected: _selectedCatIndex == i,
                   accentColor: AppColors.celeste,
@@ -110,18 +110,18 @@ PreferredSizeWidget sectionAppBar(BuildContext context, String title, IconData i
   );
 
 // ─── Reusable CatTile ─────────────────────────────────────────────────────────
-class _CatTile extends StatefulWidget {
+class CatTile extends StatefulWidget {
   final String name;
   final bool isSelected;
   final Color accentColor;
   final FocusNode focusNode;
   final bool autofocus;
   final VoidCallback onSelect;
-  const _CatTile({required this.name, required this.isSelected, required this.accentColor,
+  const CatTile({required this.name, required this.isSelected, required this.accentColor,
     required this.focusNode, required this.autofocus, required this.onSelect});
-  @override State<_CatTile> createState() => _CatTileState();
+  @override State<CatTile> createState() => CatTileState();
 }
-class _CatTileState extends State<_CatTile> {
+class CatTileState extends State<CatTile> {
   bool _focused = false;
   @override void initState() {
     super.initState();

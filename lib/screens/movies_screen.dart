@@ -5,7 +5,7 @@ import '../models/movie.dart';
 import '../services/xtream_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
-import 'live_screen.dart' show sectionAppBar, _CatTile;
+import 'live_screen.dart' show sectionAppBar, CatTile;
 import 'player_screen.dart';
 
 class MoviesScreen extends StatefulWidget {
@@ -64,7 +64,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
             : ListView.builder(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 itemCount: _categories.length,
-                itemBuilder: (_, i) => _CatTile(
+                itemBuilder: (_, i) => CatTile(
                   name: _categories[i].name,
                   isSelected: _selectedCatIndex == i,
                   accentColor: AppColors.azul,
