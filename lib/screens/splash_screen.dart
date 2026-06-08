@@ -37,7 +37,7 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
     final creds = await StorageService.getCredentials();
     if (creds != null) {
-      Navigator.pushReplacementNamed(context, '/home', arguments: creds);
+      Navigator.pushReplacementNamed(context, '/hub', arguments: creds);
     } else {
       Navigator.pushReplacementNamed(context, '/login');
     }

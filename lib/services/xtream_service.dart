@@ -76,6 +76,10 @@ class XtreamService {
     return [];
   }
 
+  // Alias so movies_screen can call getVodCategories()
+  Future<List<Category>> getVodCategories() => getMovieCategories();
+
   String liveStreamUrl(String streamId) => '$server/live/$username/$password/$streamId.ts';
-  String movieStreamUrl(String streamId, String ext) => '$server/movie/$username/$password/$streamId.$ext';
+  String vodStreamUrl(String streamId, String ext) => '$server/movie/$username/$password/$streamId.$ext';
+  String movieStreamUrl(String streamId, String ext) => vodStreamUrl(streamId, ext);
 }

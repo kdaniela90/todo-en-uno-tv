@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
-import 'screens/home_screen.dart';
+import 'screens/hub_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -11,18 +11,15 @@ void main() {
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
   ]);
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
-    ),
-  );
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light,
+  ));
   runApp(const TodoEnUnoTVApp());
 }
 
 class TodoEnUnoTVApp extends StatelessWidget {
   const TodoEnUnoTVApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -35,11 +32,9 @@ class TodoEnUnoTVApp extends StatelessWidget {
         '/login': (_) => const LoginScreen(),
       },
       onGenerateRoute: (settings) {
-        if (settings.name == '/home') {
+        if (settings.name == '/hub') {
           final creds = settings.arguments as Map<String, String>;
-          return MaterialPageRoute(
-            builder: (_) => HomeScreen(credentials: creds),
-          );
+          return MaterialPageRoute(builder: (_) => HubScreen(credentials: creds));
         }
         return null;
       },
