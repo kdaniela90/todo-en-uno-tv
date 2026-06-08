@@ -4,6 +4,7 @@ import '../models/category.dart';
 import '../models/channel.dart';
 import '../services/xtream_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/responsive.dart';
 import 'player_screen.dart';
 
 class LiveScreen extends StatefulWidget {
@@ -21,8 +22,7 @@ class _LiveScreenState extends State<LiveScreen> {
   final _catFocusNodes = <FocusNode>[];
   final _channelFocusNodes = <FocusNode>[];
 
-  @override
-  void initState() { super.initState(); _loadCategories(); }
+  @override void initState() { super.initState(); _loadCategories(); }
 
   @override
   void dispose() {
@@ -53,22 +53,31 @@ class _LiveScreenState extends State<LiveScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: _sectionAppBar(context, 'En Vivo', Icons.live_tv),
+      appBar: sectionAppBar(context, 'En Vivo', Icons.live_tv, AppColors.celeste),
       body: Row(children: [
-        _CatPanel(
-          categories: _categories,
-          selectedIndex: _selectedCatIndex,
-          focusNodes: _catFocusNodes,
-          loading: _loadingCats,
-          onSelect: _selectCategory,
+        SizedBox(
+          width: R.catPanelW(context),
+          child: _loadingCats
+            ? const Center(child: CircularProgressIndicator(color: AppColors.celeste))
+            : ListView.builder(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                itemCount: _categories.length,
+                itemBuilder: (_, i) => _CatTile(
+                  name: _categories[i].name,
+                  isSelected: _selectedCatIndex == i,
+                  accentColor: AppColors.celeste,
+                  focusNode: _catFocusNodes[i],
+                  autofocus: i == 0,
+                  onSelect: () => _selectCategory(_categories[i], i),
+                )),
         ),
         Container(width: 1, color: Colors.white10),
         Expanded(child: _loadingChannels
           ? const Center(child: CircularProgressIndicator(color: AppColors.celeste))
           : _channels.isEmpty
-            ? const Center(child: Text('Sin canales', style: TextStyle(color: AppColors.textSecondary, fontSize: 16)))
+            ? const Center(child: Text('Sin canales', style: TextStyle(color: AppColors.textSecondary)))
             : ListView.builder(
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                padding: EdgeInsets.symmetric(vertical: 8, horizontal: R.padding(context)),
                 itemCount: _channels.length,
                 itemBuilder: (_, i) => _ChannelTile(
                   channel: _channels[i],
@@ -83,7 +92,7 @@ class _LiveScreenState extends State<LiveScreen> {
 }
 
 // ─── Shared AppBar ────────────────────────────────────────────────────────────
-PreferredSizeWidget _sectionAppBar(BuildContext context, String title, IconData icon) =>
+PreferredSizeWidget sectionAppBar(BuildContext context, String title, IconData icon, Color color) =>
   AppBar(
     backgroundColor: const Color(0xFF080B14),
     leading: IconButton(
@@ -92,50 +101,23 @@ PreferredSizeWidget _sectionAppBar(BuildContext context, String title, IconData 
       onPressed: () => Navigator.pop(context),
     ),
     title: Row(mainAxisSize: MainAxisSize.min, children: [
-      Icon(icon, color: AppColors.celeste, size: 20),
+      Icon(icon, color: color, size: 20),
       const SizedBox(width: 8),
-      Text(title, style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600)),
+      Text(title, style: TextStyle(color: Colors.white, fontSize: R.fs(context, 17), fontWeight: FontWeight.w600)),
     ]),
-    bottom: const PreferredSize(
-      preferredSize: Size.fromHeight(1),
+    bottom: const PreferredSize(preferredSize: Size.fromHeight(1),
       child: Divider(color: Colors.white10, height: 1)),
   );
 
-// ─── Category Panel ───────────────────────────────────────────────────────────
-class _CatPanel extends StatelessWidget {
-  final List<Category> categories;
-  final int selectedIndex;
-  final List<FocusNode> focusNodes;
-  final bool loading;
-  final void Function(Category, int) onSelect;
-  const _CatPanel({required this.categories, required this.selectedIndex,
-    required this.focusNodes, required this.loading, required this.onSelect});
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    width: 210,
-    child: loading
-      ? const Center(child: CircularProgressIndicator(color: AppColors.celeste))
-      : ListView.builder(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          itemCount: categories.length,
-          itemBuilder: (_, i) => _CatTile(
-            name: categories[i].name,
-            isSelected: selectedIndex == i,
-            focusNode: focusNodes[i],
-            autofocus: i == 0,
-            onSelect: () => onSelect(categories[i], i),
-          )),
-  );
-}
-
+// ─── Reusable CatTile ─────────────────────────────────────────────────────────
 class _CatTile extends StatefulWidget {
   final String name;
   final bool isSelected;
+  final Color accentColor;
   final FocusNode focusNode;
   final bool autofocus;
   final VoidCallback onSelect;
-  const _CatTile({required this.name, required this.isSelected,
+  const _CatTile({required this.name, required this.isSelected, required this.accentColor,
     required this.focusNode, required this.autofocus, required this.onSelect});
   @override State<_CatTile> createState() => _CatTileState();
 }
@@ -148,6 +130,7 @@ class _CatTileState extends State<_CatTile> {
   @override
   Widget build(BuildContext context) {
     final active = widget.isSelected || _focused;
+    final isPhone = R.isPhone(context);
     return InkWell(
       focusNode: widget.focusNode,
       autofocus: widget.autofocus,
@@ -155,17 +138,19 @@ class _CatTileState extends State<_CatTile> {
       onTap: widget.onSelect,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        margin: EdgeInsets.symmetric(horizontal: isPhone ? 4 : 8, vertical: 3),
+        padding: EdgeInsets.symmetric(horizontal: isPhone ? 8 : 14, vertical: isPhone ? 9 : 12),
         decoration: BoxDecoration(
           gradient: widget.isSelected ? AppColors.buttonGradient : null,
           color: widget.isSelected ? null : (_focused ? Colors.white12 : Colors.transparent),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: _focused ? AppColors.celeste : Colors.transparent, width: 2),
+          border: Border.all(color: _focused ? widget.accentColor : Colors.transparent, width: 2),
         ),
         child: Text(widget.name,
-          style: TextStyle(color: active ? Colors.white : AppColors.textSecondary,
-            fontSize: 13, fontWeight: active ? FontWeight.w600 : FontWeight.normal),
+          style: TextStyle(
+            color: active ? Colors.white : AppColors.textSecondary,
+            fontSize: R.fs(context, 13),
+            fontWeight: active ? FontWeight.w600 : FontWeight.normal),
           maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
     );
@@ -189,43 +174,51 @@ class _ChannelTileState extends State<_ChannelTile> {
     widget.focusNode.addListener(() { if (mounted) setState(() => _focused = widget.focusNode.hasFocus); });
   }
   @override
-  Widget build(BuildContext context) => InkWell(
-    focusNode: widget.focusNode,
-    autofocus: widget.autofocus,
-    focusColor: Colors.transparent,
-    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerScreen(
-      title: widget.channel.name,
-      streamUrl: widget.service.liveStreamUrl(widget.channel.id)))),
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 150),
-      margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: _focused ? Colors.white12 : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _focused ? AppColors.celeste : Colors.transparent, width: 2),
+  Widget build(BuildContext context) {
+    final isPhone = R.isPhone(context);
+    final imgW = isPhone ? 44.0 : 60.0;
+    final imgH = isPhone ? 32.0 : 44.0;
+    return InkWell(
+      focusNode: widget.focusNode,
+      autofocus: widget.autofocus,
+      focusColor: Colors.transparent,
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerScreen(
+        title: widget.channel.name,
+        streamUrl: widget.service.liveStreamUrl(widget.channel.id)))),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
+        padding: EdgeInsets.symmetric(horizontal: isPhone ? 8 : 12, vertical: isPhone ? 8 : 10),
+        decoration: BoxDecoration(
+          color: _focused ? Colors.white12 : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _focused ? AppColors.celeste : Colors.transparent, width: 2),
+        ),
+        child: Row(children: [
+          ClipRRect(borderRadius: BorderRadius.circular(6),
+            child: widget.channel.streamIcon.isNotEmpty
+              ? CachedNetworkImage(imageUrl: widget.channel.streamIcon, width: imgW, height: imgH, fit: BoxFit.contain,
+                  placeholder: (_, __) => _iconBox(imgW, imgH), errorWidget: (_, __, ___) => _iconBox(imgW, imgH))
+              : _iconBox(imgW, imgH)),
+          SizedBox(width: isPhone ? 10 : 14),
+          Expanded(child: Text(widget.channel.name,
+            style: TextStyle(
+              color: _focused ? Colors.white : AppColors.textPrimary,
+              fontSize: R.fs(context, 15),
+              fontWeight: _focused ? FontWeight.w600 : FontWeight.normal),
+            maxLines: 1, overflow: TextOverflow.ellipsis)),
+          if (!isPhone)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(color: Colors.red.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.red.withOpacity(0.5))),
+              child: const Text('● EN VIVO', style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold))),
+        ]),
       ),
-      child: Row(children: [
-        ClipRRect(borderRadius: BorderRadius.circular(6),
-          child: widget.channel.streamIcon.isNotEmpty
-            ? CachedNetworkImage(imageUrl: widget.channel.streamIcon, width: 60, height: 44, fit: BoxFit.contain,
-                placeholder: (_, __) => _iconBox(), errorWidget: (_, __, ___) => _iconBox())
-            : _iconBox()),
-        const SizedBox(width: 14),
-        Expanded(child: Text(widget.channel.name,
-          style: TextStyle(color: _focused ? Colors.white : AppColors.textPrimary,
-            fontSize: 15, fontWeight: _focused ? FontWeight.w600 : FontWeight.normal),
-          maxLines: 1, overflow: TextOverflow.ellipsis)),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(color: Colors.red.withOpacity(0.15),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: Colors.red.withOpacity(0.5))),
-          child: const Text('● EN VIVO', style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold))),
-      ]),
-    ),
-  );
-  Widget _iconBox() => Container(width: 60, height: 44,
+    );
+  }
+  Widget _iconBox(double w, double h) => Container(width: w, height: h,
     decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(6)),
-    child: const Icon(Icons.tv, color: AppColors.celeste, size: 22));
+    child: const Icon(Icons.tv, color: AppColors.celeste, size: 18));
 }
