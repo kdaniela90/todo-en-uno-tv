@@ -18,7 +18,6 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePass = true;
   String? _error;
 
-  // Server is fixed — not shown to the user
   static const String _server = 'http://allinonestream.fans:8080';
 
   @override
@@ -54,7 +53,7 @@ class _LoginScreenState extends State<LoginScreen> {
       });
     } else {
       setState(() {
-        _error = 'Usuario o contraseña incorrectos. Verifica tus datos.';
+        _error = 'Usuario o contraseña incorrectos.';
         _loading = false;
       });
     }
@@ -81,28 +80,17 @@ class _LoginScreenState extends State<LoginScreen> {
                   children: [
                     Image.asset(
                       'assets/images/logo.png',
-                      width: isTV ? 180 : 130,
-                      errorBuilder: (_, __, ___) => const Icon(
-                        Icons.tv, size: 80, color: Colors.white,
-                      ),
+                      width: isTV ? 160 : 120,
+                      errorBuilder: (_, __, ___) => const Icon(Icons.tv, size: 80, color: Colors.white),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      'TODO EN UNO TV',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 2,
-                      ),
-                    ),
+                    const Text('TODO EN UNO TV',
+                      style: TextStyle(color: Colors.white, fontSize: 26,
+                        fontWeight: FontWeight.bold, letterSpacing: 2)),
                     const SizedBox(height: 6),
-                    const Text(
-                      'Inicia sesión con tus credenciales',
-                      style: TextStyle(color: Colors.white70, fontSize: 14),
-                    ),
-                    const SizedBox(height: 36),
-                    // Usuario
+                    const Text('Inicia sesión con tus credenciales',
+                      style: TextStyle(color: Colors.white70, fontSize: 14)),
+                    const SizedBox(height: 32),
                     _buildField(
                       controller: _userCtrl,
                       label: 'Usuario',
@@ -111,17 +99,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       validator: (v) => (v == null || v.isEmpty) ? 'Ingresa tu usuario' : null,
                     ),
                     const SizedBox(height: 16),
-                    // Contraseña
                     _buildField(
                       controller: _passCtrl,
                       label: 'Contraseña',
                       icon: Icons.lock_rounded,
                       obscure: _obscurePass,
                       suffix: IconButton(
-                        icon: Icon(
-                          _obscurePass ? Icons.visibility : Icons.visibility_off,
-                          color: Colors.white54,
-                        ),
+                        icon: Icon(_obscurePass ? Icons.visibility : Icons.visibility_off,
+                          color: Colors.white54),
                         onPressed: () => setState(() => _obscurePass = !_obscurePass),
                       ),
                       validator: (v) => (v == null || v.isEmpty) ? 'Ingresa tu contraseña' : null,
@@ -135,18 +120,12 @@ class _LoginScreenState extends State<LoginScreen> {
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: Colors.red.withOpacity(0.5)),
                         ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.error_outline, color: Colors.red, size: 18),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _error!,
-                                style: const TextStyle(color: Colors.red, fontSize: 13),
-                              ),
-                            ),
-                          ],
-                        ),
+                        child: Row(children: [
+                          const Icon(Icons.error_outline, color: Colors.red, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text(_error!,
+                            style: const TextStyle(color: Colors.red, fontSize: 13))),
+                        ]),
                       ),
                     ],
                     const SizedBox(height: 28),
@@ -156,8 +135,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
-                            colors: [Color(0xFF5DE0E6), Color(0xFF004AAD)],
-                          ),
+                            colors: [Color(0xFF5DE0E6), Color(0xFF004AAD)]),
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: ElevatedButton(
@@ -166,35 +144,20 @@ class _LoginScreenState extends State<LoginScreen> {
                             backgroundColor: Colors.transparent,
                             shadowColor: Colors.transparent,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
+                              borderRadius: BorderRadius.circular(14)),
                           ),
                           child: _loading
-                              ? const SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2.5,
-                                  ),
-                                )
-                              : const Text(
-                                  'INICIAR SESIÓN',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1.5,
-                                  ),
-                                ),
+                            ? const SizedBox(width: 24, height: 24,
+                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+                            : const Text('INICIAR SESIÓN',
+                                style: TextStyle(color: Colors.white, fontSize: 16,
+                                  fontWeight: FontWeight.bold, letterSpacing: 1.5)),
                         ),
                       ),
                     ),
                     const SizedBox(height: 20),
-                    const Text(
-                      '© 2026 Todo en Uno TV',
-                      style: TextStyle(color: Colors.white38, fontSize: 12),
-                    ),
+                    const Text('© 2026 Todo en Uno TV',
+                      style: TextStyle(color: Colors.white38, fontSize: 12)),
                   ],
                 ),
               ),
@@ -214,37 +177,28 @@ class _LoginScreenState extends State<LoginScreen> {
     Widget? suffix,
     String? Function(String?)? validator,
   }) {
-    return Focus(
-      child: Builder(
-        builder: (context) {
-          final focused = Focus.of(context).hasFocus;
-          return TextFormField(
-            controller: controller,
-            obscureText: obscure,
-            autofocus: autofocus,
-            style: const TextStyle(color: Colors.white, fontSize: 16),
-            decoration: InputDecoration(
-              labelText: label,
-              prefixIcon: Icon(icon, color: const Color(0xFF5DE0E6)),
-              suffixIcon: suffix,
-              filled: true,
-              fillColor: focused
-                  ? Colors.white.withOpacity(0.18)
-                  : Colors.white.withOpacity(0.1),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide.none,
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Color(0xFF5DE0E6), width: 2.5),
-              ),
-              labelStyle: const TextStyle(color: Colors.white70, fontSize: 15),
-            ),
-            validator: validator,
-          );
-        },
+    return TextFormField(
+      controller: controller,
+      obscureText: obscure,
+      autofocus: autofocus,
+      style: const TextStyle(color: Colors.white, fontSize: 16),
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, color: const Color(0xFF5DE0E6)),
+        suffixIcon: suffix,
+        filled: true,
+        fillColor: Colors.white.withOpacity(0.12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFF5DE0E6), width: 2.5)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Colors.white24, width: 1.5)),
+        labelStyle: const TextStyle(color: Colors.white70, fontSize: 15),
       ),
+      validator: validator,
     );
   }
 }
