@@ -361,7 +361,7 @@ class _EpisodeTileState extends State<_EpisodeTile> {
                 child: Text('E$_epNum', style: const TextStyle(
                   color: AppColors.morado, fontSize: 10, fontWeight: FontWeight.bold))),
               Expanded(child: Text(_title,
-                style: TextStyle(color: _focused ? Colors.white : Colors.white87,
+                style: TextStyle(color: _focused ? Colors.white : Colors.white.withOpacity(0.87),
                   fontSize: R.fs(context, 13), fontWeight: FontWeight.w600),
                 maxLines: 1, overflow: TextOverflow.ellipsis)),
             ]),

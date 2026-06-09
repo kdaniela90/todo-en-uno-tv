@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/category.dart';
 import '../models/channel.dart';
+import '../models/epg_entry.dart';
 import '../models/movie.dart';
 import '../models/series.dart';
 
@@ -91,6 +92,35 @@ class XtreamService {
     } catch (_) {}
     return null;
   }
+
+  // ── EPG ─────────────────────────────────────────────────────────────────────
+  // Cache de sesión: evita llamadas repetidas al mismo canal
+  static final Map<String, List<EpgEntry>> _epgCache = {};
+
+  Future<List<EpgEntry>> getShortEpg(String streamId) async {
+    if (_epgCache.containsKey(streamId)) return _epgCache[streamId]!;
+    try {
+      final url = '$_base&action=get_short_epg&stream_id=$streamId&limit=2';
+      final res = await http.get(Uri.parse(url))
+        .timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200) {
+        final body = json.decode(res.body) as Map<String, dynamic>;
+        final raw  = body['epg_listings'];
+        if (raw is List && raw.isNotEmpty) {
+          final entries = raw
+            .map((e) => EpgEntry.fromJson(e as Map<String, dynamic>))
+            .toList();
+          _epgCache[streamId] = entries;
+          return entries;
+        }
+      }
+    } catch (_) {}
+    _epgCache[streamId] = [];
+    return [];
+  }
+
+  /// Limpia el cache EPG (llamar al cambiar de categoría si se quiere datos frescos)
+  static void clearEpgCache() => _epgCache.clear();
 
   Future<Map<String, dynamic>?> getSeriesInfo(String seriesId) async {
     try {

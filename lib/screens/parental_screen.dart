@@ -301,14 +301,14 @@ class _CatList extends StatelessWidget {
       Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        color: Colors.white05,
+        color: Colors.white.withOpacity(0.05),
         child: Text(
           '$visibleCount de ${cats.length} categorías visibles  ·  ${blocked.length} bloqueadas',
           style: TextStyle(color: accentColor, fontSize: 12, fontWeight: FontWeight.w600)),
       ),
       Expanded(child: ListView.separated(
         itemCount: cats.length,
-        separatorBuilder: (_, __) => const Divider(color: Colors.white07, height: 1),
+        separatorBuilder: (_, __) => Divider(color: Colors.white.withOpacity(0.07), height: 1),
         itemBuilder: (ctx, i) {
           final cat = cats[i];
           final isVisible = !blocked.contains(cat.id);

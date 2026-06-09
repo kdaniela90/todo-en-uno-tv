@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/category.dart';
 import '../models/channel.dart';
+import '../models/epg_entry.dart';
 import '../services/xtream_service.dart';
 import '../services/history_service.dart';
 import '../services/parental_service.dart';
@@ -104,6 +105,8 @@ class _LiveScreenState extends State<LiveScreen> {
               itemCount: _channels.length,
               itemBuilder: (_, i) => _ChannelTile(
                 channel: _channels[i], service: widget.service,
+                channels: _channels,
+                channelIndex: i,
                 focusNode: i < _channelFocusNodes.length ? _channelFocusNodes[i] : FocusNode(),
                 autofocus: i == 0,
                 onFavChanged: () => _selectCategory(_categories[_selectedCatIndex], _selectedCatIndex),
@@ -184,80 +187,185 @@ class CatTileState extends State<CatTile> {
 class _ChannelTile extends StatefulWidget {
   final Channel channel;
   final XtreamService service;
+  final List<Channel> channels;
+  final int channelIndex;
   final FocusNode focusNode;
   final bool autofocus;
   final VoidCallback onFavChanged;
   const _ChannelTile({required this.channel, required this.service,
+    required this.channels, required this.channelIndex,
     required this.focusNode, this.autofocus = false, required this.onFavChanged});
   @override State<_ChannelTile> createState() => _ChannelTileState();
 }
 class _ChannelTileState extends State<_ChannelTile> {
   bool _focused = false, _isFav = false;
+  List<EpgEntry> _epg = [];
+  bool _epgLoaded = false;
+
   @override void initState() {
     super.initState();
-    widget.focusNode.addListener(() { if (mounted) setState(() => _focused = widget.focusNode.hasFocus); });
+    widget.focusNode.addListener(() {
+      if (mounted) setState(() => _focused = widget.focusNode.hasFocus);
+    });
     _loadFav();
+    _loadEpg();
   }
+
   Future<void> _loadFav() async {
     final fav = await HistoryService.isFavorite(HistoryService.live, widget.channel.id);
     if (mounted) setState(() => _isFav = fav);
   }
+
+  Future<void> _loadEpg() async {
+    final entries = await widget.service.getShortEpg(widget.channel.id);
+    if (mounted) setState(() { _epg = entries; _epgLoaded = true; });
+  }
+
   Future<void> _toggleFav() async {
     final newState = await HistoryService.toggleFavorite(
       HistoryService.live, widget.channel.id,
       {'id': widget.channel.id, 'name': widget.channel.name, 'icon': widget.channel.streamIcon});
     if (mounted) { setState(() => _isFav = newState); widget.onFavChanged(); }
   }
+
   Future<void> _play() async {
     await HistoryService.addRecent(HistoryService.live,
       {'id': widget.channel.id, 'name': widget.channel.name, 'icon': widget.channel.streamIcon});
     if (!mounted) return;
+    // Pasar programa actual al player si está disponible
     Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerScreen(
       title: widget.channel.name,
-      streamUrl: widget.service.liveStreamUrl(widget.channel.id))));
+      streamUrl: widget.service.liveStreamUrl(widget.channel.id),
+      epgTitle: _current?.title,
+      channels: widget.channels,
+      channelIndex: widget.channelIndex,
+      service: widget.service,
+    )));
+  }
+
+  // Programa actual (si la lista no está vacía y el primero no ha terminado)
+  EpgEntry? get _current {
+    if (_epg.isEmpty) return null;
+    final now = DateTime.now();
+    return _epg.firstWhere(
+      (e) => e.start.isBefore(now) && e.end.isAfter(now),
+      orElse: () => _epg.first,
+    );
+  }
+
+  EpgEntry? get _next {
+    if (_epg.length < 2) return null;
+    final c = _current;
+    if (c == null) return null;
+    final idx = _epg.indexOf(c);
+    return idx + 1 < _epg.length ? _epg[idx + 1] : null;
   }
 
   @override Widget build(BuildContext context) {
     final isPhone = R.isPhone(context);
     final sz = isPhone ? 36.0 : 48.0;
+    final cur = _current;
+
     return InkWell(
       focusNode: widget.focusNode, autofocus: widget.autofocus,
       focusColor: Colors.transparent, onTap: _play,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
-        padding: EdgeInsets.symmetric(horizontal: isPhone ? 8 : 12, vertical: isPhone ? 7 : 9),
+        padding: EdgeInsets.symmetric(
+          horizontal: isPhone ? 8 : 12,
+          vertical: isPhone ? 7 : 9),
         decoration: BoxDecoration(
           color: _focused ? Colors.white12 : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: _focused ? AppColors.celeste : Colors.transparent, width: 2),
+          border: Border.all(
+            color: _focused ? AppColors.celeste : Colors.transparent, width: 2),
         ),
-        child: Row(children: [
-          ClipRRect(borderRadius: BorderRadius.circular(6),
-            child: widget.channel.streamIcon.isNotEmpty
-              ? CachedNetworkImage(imageUrl: widget.channel.streamIcon, width: sz, height: sz * 0.75, fit: BoxFit.contain,
-                  placeholder: (_, __) => _icon(sz), errorWidget: (_, __, ___) => _icon(sz))
-              : _icon(sz)),
-          SizedBox(width: isPhone ? 8 : 12),
-          Expanded(child: Text(widget.channel.name, style: TextStyle(
-            color: _focused ? Colors.white : AppColors.textPrimary,
-            fontSize: R.fs(context, 14),
-            fontWeight: _focused ? FontWeight.w600 : FontWeight.normal),
-            maxLines: 1, overflow: TextOverflow.ellipsis)),
-          if (!isPhone) Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-            decoration: BoxDecoration(color: Colors.red.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(5), border: Border.all(color: Colors.red.withOpacity(0.5))),
-            child: const Text('● VIVO', style: TextStyle(color: Colors.red, fontSize: 9, fontWeight: FontWeight.bold))),
-          const SizedBox(width: 4),
-          GestureDetector(onTap: _toggleFav,
-            child: Padding(padding: const EdgeInsets.all(6),
-              child: Icon(_isFav ? Icons.favorite : Icons.favorite_border,
-                color: _isFav ? Colors.red : Colors.white30, size: 18))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // ── Fila principal: logo + nombre + badges ─────────────────────
+          Row(children: [
+            ClipRRect(borderRadius: BorderRadius.circular(6),
+              child: widget.channel.streamIcon.isNotEmpty
+                ? CachedNetworkImage(
+                    imageUrl: widget.channel.streamIcon,
+                    width: sz, height: sz * 0.75,
+                    fit: BoxFit.contain,
+                    placeholder: (_, __) => _icon(sz),
+                    errorWidget: (_, __, ___) => _icon(sz))
+                : _icon(sz)),
+            SizedBox(width: isPhone ? 8 : 12),
+            Expanded(child: Text(widget.channel.name,
+              style: TextStyle(
+                color: _focused ? Colors.white : AppColors.textPrimary,
+                fontSize: R.fs(context, 14),
+                fontWeight: _focused ? FontWeight.w600 : FontWeight.normal),
+              maxLines: 1, overflow: TextOverflow.ellipsis)),
+            if (!isPhone)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(5),
+                  border: Border.all(color: Colors.red.withOpacity(0.5))),
+                child: const Text('● VIVO',
+                  style: TextStyle(color: Colors.red, fontSize: 9, fontWeight: FontWeight.bold))),
+            const SizedBox(width: 4),
+            GestureDetector(onTap: _toggleFav,
+              child: Padding(padding: const EdgeInsets.all(6),
+                child: Icon(
+                  _isFav ? Icons.favorite : Icons.favorite_border,
+                  color: _isFav ? Colors.red : Colors.white30, size: 18))),
+          ]),
+
+          // ── EPG: programa actual + barra de progreso ───────────────────
+          if (_epgLoaded && cur != null) ...[
+            const SizedBox(height: 5),
+            Padding(
+              padding: EdgeInsets.only(left: sz + (isPhone ? 8 : 12)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(child: Text(cur.title,
+                    style: TextStyle(
+                      color: _focused ? AppColors.celeste : Colors.white54,
+                      fontSize: R.fs(context, 11),
+                      fontWeight: FontWeight.w500),
+                    maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  const SizedBox(width: 4),
+                  Text(cur.timeRange,
+                    style: const TextStyle(color: Colors.white30, fontSize: 10)),
+                ]),
+                const SizedBox(height: 3),
+                // Barra de progreso
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: cur.progress,
+                    minHeight: 3,
+                    backgroundColor: Colors.white12,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      _focused ? AppColors.celeste : AppColors.celeste.withOpacity(0.5)),
+                  ),
+                ),
+              ]),
+            ),
+          ] else if (!_epgLoaded) ...[
+            // Placeholder mientras carga
+            Padding(
+              padding: EdgeInsets.only(
+                left: sz + (isPhone ? 8 : 12), top: 4),
+              child: const SizedBox(
+                width: 80, height: 3,
+                child: LinearProgressIndicator(
+                  backgroundColor: Colors.white10,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white12))),
+            ),
+          ],
         ]),
       ),
     );
   }
-  Widget _icon(double sz) => Container(width: sz, height: sz * 0.75, color: AppColors.card,
+
+  Widget _icon(double sz) => Container(
+    width: sz, height: sz * 0.75, color: AppColors.card,
     child: const Icon(Icons.tv, color: AppColors.celeste, size: 16));
 }

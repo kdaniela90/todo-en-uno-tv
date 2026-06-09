@@ -101,7 +101,7 @@ class _LoginScreenState extends State<LoginScreen> {
       req.response.headers.set('Content-Type', 'text/html; charset=utf-8');
 
       if (req.method == 'POST') {
-        final body = await req.transform(utf8.decoder).join();
+        final body = await utf8.decoder.bind(req).join();
         final params = Uri.splitQueryString(body);
         final user = params['username'] ?? '';
         final pass = params['password'] ?? '';
