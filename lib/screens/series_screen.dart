@@ -25,6 +25,16 @@ class _SeriesScreenState extends State<SeriesScreen> {
   final _catFocusNodes = <FocusNode>[];
   final _seriesFocusNodes = <FocusNode>[];
 
+  // ── Búsqueda inline ──────────────────────────────────────────────────────
+  bool _showSearch = false;
+  String _searchQuery = '';
+  final _searchCtrl = TextEditingController();
+
+  List<Series> get _visibleSeries => _searchQuery.isEmpty
+      ? _series
+      : _series.where((s) =>
+          s.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+
   static final _virtualCats = [
     Category(id: HistoryService.recentCatId, name: 'Recientes'),
     Category(id: HistoryService.favCatId,    name: 'Favoritos'),
@@ -36,6 +46,7 @@ class _SeriesScreenState extends State<SeriesScreen> {
   void dispose() {
     for (final n in _catFocusNodes) n.dispose();
     for (final n in _seriesFocusNodes) n.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -55,7 +66,8 @@ class _SeriesScreenState extends State<SeriesScreen> {
   }
 
   Future<void> _selectCategory(Category cat, int index) async {
-    setState(() { _selectedCatIndex = index; _loadingSeries = true; _series = []; });
+    _searchCtrl.clear();
+    setState(() { _selectedCatIndex = index; _loadingSeries = true; _series = []; _searchQuery = ''; });
     for (final n in _seriesFocusNodes) n.dispose();
     _seriesFocusNodes.clear();
 
@@ -81,52 +93,114 @@ class _SeriesScreenState extends State<SeriesScreen> {
   @override
   Widget build(BuildContext context) {
     final cols = R.gridCols(context);
+    final p    = R.padding(context);
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: sectionAppBar(context, 'Series', Icons.tv_outlined, AppColors.morado),
-      body: Row(children: [
-        SizedBox(
-          width: R.catPanelW(context),
-          child: _loadingCats
-            ? const Center(child: CircularProgressIndicator(color: AppColors.celeste))
-            : ListView.builder(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: _categories.length,
-                itemBuilder: (_, i) => CatTile(
-                  name: _categories[i].name,
-                  isSelected: _selectedCatIndex == i,
-                  accentColor: i < _virtualCats.length ? Colors.amber : AppColors.morado,
-                  focusNode: _catFocusNodes[i],
-                  autofocus: i == 0,
-                  onSelect: () => _selectCategory(_categories[i], i),
-                )),
+      appBar: sectionAppBar(context, 'Series', Icons.tv_outlined, AppColors.morado,
+        actions: [
+          IconButton(
+            icon: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: Icon(
+                _showSearch ? Icons.search_off_rounded : Icons.search_rounded,
+                key: ValueKey(_showSearch),
+                color: _showSearch ? AppColors.morado : Colors.white70, size: 22)),
+            tooltip: 'Buscar serie',
+            onPressed: () => setState(() {
+              _showSearch = !_showSearch;
+              if (!_showSearch) { _searchCtrl.clear(); _searchQuery = ''; }
+            }),
+          ),
+        ]),
+      body: Column(children: [
+        // ── Barra de búsqueda ──────────────────────────────────────────
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          child: _showSearch ? _buildSearchBar(context, AppColors.morado) : const SizedBox.shrink(),
         ),
-        Container(width: 1, color: Colors.white10),
-        Expanded(child: _loadingSeries
-          ? const Center(child: CircularProgressIndicator(color: AppColors.morado))
-          : _series.isEmpty
-            ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Icon(_selectedCatIndex < _virtualCats.length ? Icons.inbox_outlined : Icons.tv_outlined,
-                  color: Colors.white24, size: 48),
-                const SizedBox(height: 12),
-                Text(_selectedCatIndex < _virtualCats.length ? 'Aún no hay nada aquí' : 'Sin series',
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
-              ]))
-            : GridView.builder(
-                padding: EdgeInsets.all(R.padding(context)),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: cols, childAspectRatio: 0.65,
-                  crossAxisSpacing: 6, mainAxisSpacing: 6),
-                itemCount: _series.length,
-                itemBuilder: (_, i) => _SeriesCard(
-                  series: _series[i],
-                  service: widget.service,
-                  focusNode: i < _seriesFocusNodes.length ? _seriesFocusNodes[i] : FocusNode(),
-                  autofocus: i == 0,
-                  onFavChanged: () => _selectCategory(_categories[_selectedCatIndex], _selectedCatIndex),
-                ),
-              )),
+        // ── Contenido ──────────────────────────────────────────────────
+        Expanded(child: Row(children: [
+          SizedBox(
+            width: R.catPanelW(context),
+            child: _loadingCats
+              ? const Center(child: CircularProgressIndicator(color: AppColors.celeste))
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: _categories.length,
+                  itemBuilder: (_, i) => CatTile(
+                    name: _categories[i].name,
+                    isSelected: _selectedCatIndex == i,
+                    accentColor: i < _virtualCats.length ? Colors.amber : AppColors.morado,
+                    focusNode: _catFocusNodes[i],
+                    autofocus: i == 0,
+                    onSelect: () => _selectCategory(_categories[i], i),
+                  )),
+          ),
+          Container(width: 1, color: Colors.white10),
+          Expanded(child: _loadingSeries
+            ? const Center(child: CircularProgressIndicator(color: AppColors.morado))
+            : _visibleSeries.isEmpty
+              ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(_searchQuery.isNotEmpty ? Icons.search_off : (
+                    _selectedCatIndex < _virtualCats.length ? Icons.inbox_outlined : Icons.tv_outlined),
+                    color: Colors.white24, size: 48),
+                  const SizedBox(height: 12),
+                  Text(_searchQuery.isNotEmpty
+                    ? 'Sin resultados para "$_searchQuery"'
+                    : (_selectedCatIndex < _virtualCats.length ? 'Aún no hay nada aquí' : 'Sin series'),
+                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+                ]))
+              : GridView.builder(
+                  padding: EdgeInsets.all(p),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: cols, childAspectRatio: 0.65,
+                    crossAxisSpacing: 6, mainAxisSpacing: 6),
+                  itemCount: _visibleSeries.length,
+                  itemBuilder: (_, i) => _SeriesCard(
+                    series: _visibleSeries[i],
+                    service: widget.service,
+                    focusNode: i < _seriesFocusNodes.length ? _seriesFocusNodes[i] : FocusNode(),
+                    autofocus: i == 0,
+                    onFavChanged: () => _selectCategory(_categories[_selectedCatIndex], _selectedCatIndex),
+                  ),
+                )),
+        ])),
       ]),
+    );
+  }
+
+  Widget _buildSearchBar(BuildContext ctx, Color accentColor) {
+    final p = R.padding(ctx);
+    return Container(
+      color: const Color(0xFF080B14),
+      padding: EdgeInsets.fromLTRB(p + 6, 8, p + 6, 8),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: accentColor.withOpacity(0.35))),
+        child: Row(children: [
+          Padding(
+            padding: EdgeInsets.only(left: p),
+            child: Icon(Icons.search, color: accentColor, size: 18)),
+          Expanded(child: TextField(
+            controller: _searchCtrl,
+            autofocus: true,
+            style: const TextStyle(color: Colors.white, fontSize: 13),
+            decoration: const InputDecoration(
+              hintText: 'Buscar serie...',
+              hintStyle: TextStyle(color: AppColors.textSecondary),
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12)),
+            onChanged: (q) => setState(() => _searchQuery = q),
+          )),
+          if (_searchQuery.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.close, color: Colors.white38, size: 16),
+              onPressed: () { _searchCtrl.clear(); setState(() => _searchQuery = ''); }),
+        ]),
+      ),
     );
   }
 }

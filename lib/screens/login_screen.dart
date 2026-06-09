@@ -159,7 +159,7 @@ button{width:100%;padding:16px;background:linear-gradient(90deg,#5DE0E6,#3372E3)
   font-weight:700;cursor:pointer;margin-top:4px}
 </style></head>
 <body><div class="card">
-<div class="logo">📺</div>
+<div class="logo">TV</div>
 <h1>TODO EN UNO TV</h1>
 <p class="sub">Ingresa tus credenciales desde el teléfono</p>
 <form method="POST" action="/">
@@ -185,7 +185,7 @@ h1{color:white;font-size:1.2rem;font-weight:700;margin-bottom:8px}
 p{color:#5a7a9b;font-size:.9rem;line-height:1.6}
 </style></head>
 <body><div class="card">
-<div class="icon">✅</div>
+<div class="icon">&#10003;</div>
 <h1>¡Conectado!</h1>
 <p>Las credenciales fueron enviadas a tu TV.<br>Ya puedes cerrar esta página.</p>
 </div></body></html>''';

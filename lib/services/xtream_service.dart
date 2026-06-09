@@ -5,6 +5,7 @@ import '../models/channel.dart';
 import '../models/epg_entry.dart';
 import '../models/movie.dart';
 import '../models/series.dart';
+import 'epg_settings_service.dart';
 
 class XtreamService {
   final String server;
@@ -84,13 +85,57 @@ class XtreamService {
   String vodStreamUrl(String streamId, String ext) => '$server/movie/$username/$password/$streamId.$ext';
   String movieStreamUrl(String streamId, String ext) => vodStreamUrl(streamId, ext);
 
+  // ── Cast index (session cache) ───────────────────────────────────────────
+  // Poblado cada vez que se llama getVodInfo (al abrir detalle de película)
+  static final Map<String, String> _castIndex = {};
+
+  /// Devuelve el cast de una película si ya fue cargado antes.
+  static String cachedCast(String movieId) => _castIndex[movieId] ?? '';
+
   Future<Map<String, dynamic>?> getVodInfo(String streamId) async {
     try {
       final url = '$_base&action=get_vod_info&vod_id=$streamId';
       final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
-      if (response.statusCode == 200) return json.decode(response.body);
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        // Indexar cast para búsquedas futuras
+        final cast = data['info']?['cast']?.toString() ??
+                     data['movie_data']?['cast']?.toString() ?? '';
+        if (cast.isNotEmpty) _castIndex[streamId] = cast;
+        return data;
+      }
     } catch (_) {}
     return null;
+  }
+
+  /// Pre-carga vod_info de una lista de películas en background (para el buscador).
+  /// [onProgress] recibe (cargadas, total).
+  Future<void> prefetchCast(
+    List<Movie> movies, {
+    void Function(int done, int total)? onProgress,
+  }) async {
+    final pending = movies.where((m) => !_castIndex.containsKey(m.id)).toList();
+    int done = 0;
+    const batchSize = 15;
+    for (int i = 0; i < pending.length; i += batchSize) {
+      final batch = pending.sublist(i, (i + batchSize).clamp(0, pending.length));
+      await Future.wait(batch.map((m) async {
+        try {
+          final url = '$_base&action=get_vod_info&vod_id=${m.id}';
+          final res = await http.get(Uri.parse(url))
+              .timeout(const Duration(seconds: 10));
+          if (res.statusCode == 200) {
+            final data = json.decode(res.body) as Map<String, dynamic>;
+            final cast = data['info']?['cast']?.toString() ??
+                         data['movie_data']?['cast']?.toString() ?? '';
+            _castIndex[m.id] = cast; // guarda aunque esté vacío para no re-intentar
+          }
+        } catch (_) {}
+      }));
+      done += batch.length;
+      onProgress?.call(done, pending.length);
+      await Future.delayed(const Duration(milliseconds: 80));
+    }
   }
 
   // ── EPG ─────────────────────────────────────────────────────────────────────
@@ -100,15 +145,17 @@ class XtreamService {
   Future<List<EpgEntry>> getShortEpg(String streamId) async {
     if (_epgCache.containsKey(streamId)) return _epgCache[streamId]!;
     try {
-      final url = '$_base&action=get_short_epg&stream_id=$streamId&limit=2';
+      final url = '$_base&action=get_short_epg&stream_id=$streamId&limit=4';
       final res = await http.get(Uri.parse(url))
         .timeout(const Duration(seconds: 8));
       if (res.statusCode == 200) {
         final body = json.decode(res.body) as Map<String, dynamic>;
         final raw  = body['epg_listings'];
         if (raw is List && raw.isNotEmpty) {
+          final offset = EpgSettingsService.offsetHours;
           final entries = raw
-            .map((e) => EpgEntry.fromJson(e as Map<String, dynamic>))
+            .map((e) => EpgEntry.fromJson(e as Map<String, dynamic>)
+                .withOffset(offset))
             .toList();
           _epgCache[streamId] = entries;
           return entries;
@@ -119,8 +166,33 @@ class XtreamService {
     return [];
   }
 
-  /// Limpia el cache EPG (llamar al cambiar de categoría si se quiere datos frescos)
+  /// Limpia el cache EPG completo
   static void clearEpgCache() => _epgCache.clear();
+
+  /// Limpia todos los cachés de sesión (EPG + cast index).
+  static void clearAllCaches() { _epgCache.clear(); _castIndex.clear(); }
+
+  /// Limpia el cache de un canal específico (para auto-refresh al terminar programa)
+  static void clearEpgCacheForChannel(String streamId) => _epgCache.remove(streamId);
+
+  /// Busca en el EPG ya cacheado. Devuelve pares (streamId, EpgEntry).
+  /// Solo busca en canales cuyo EPG ya fue descargado.
+  static List<({String streamId, EpgEntry entry})> searchEpgCache(String query) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return [];
+    final results = <({String streamId, EpgEntry entry})>[];
+    for (final kv in _epgCache.entries) {
+      for (final e in kv.value) {
+        if (e.title.toLowerCase().contains(q) ||
+            e.description.toLowerCase().contains(q)) {
+          results.add((streamId: kv.key, entry: e));
+        }
+      }
+    }
+    // Ordenar por hora de inicio
+    results.sort((a, b) => a.entry.start.compareTo(b.entry.start));
+    return results;
+  }
 
   Future<Map<String, dynamic>?> getSeriesInfo(String seriesId) async {
     try {

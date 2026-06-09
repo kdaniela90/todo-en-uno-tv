@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/category.dart';
@@ -6,9 +7,12 @@ import '../models/epg_entry.dart';
 import '../services/xtream_service.dart';
 import '../services/history_service.dart';
 import '../services/parental_service.dart';
+import '../services/epg_settings_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
 import 'player_screen.dart';
+import 'epg_search_screen.dart';
+import '../widgets/reminder_button.dart';
 
 class LiveScreen extends StatefulWidget {
   final XtreamService service;
@@ -24,6 +28,16 @@ class _LiveScreenState extends State<LiveScreen> {
   final _catFocusNodes = <FocusNode>[];
   final _channelFocusNodes = <FocusNode>[];
 
+  // ── Búsqueda de canales ──────────────────────────────────────────────────
+  bool _showSearch = false;
+  String _searchQuery = '';
+  final _searchCtrl = TextEditingController();
+
+  List<Channel> get _visibleChannels => _searchQuery.isEmpty
+      ? _channels
+      : _channels.where((c) =>
+          c.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+
   static final _virtualCats = [
     Category(id: HistoryService.recentCatId, name: 'Recientes'),
     Category(id: HistoryService.favCatId,    name: 'Favoritos'),
@@ -33,6 +47,7 @@ class _LiveScreenState extends State<LiveScreen> {
 
   @override void dispose() {
     for (final n in [..._catFocusNodes, ..._channelFocusNodes]) n.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -52,7 +67,8 @@ class _LiveScreenState extends State<LiveScreen> {
   }
 
   Future<void> _selectCategory(Category cat, int index) async {
-    setState(() { _selectedCatIndex = index; _loadingChannels = true; _channels = []; });
+    _searchCtrl.clear();
+    setState(() { _selectedCatIndex = index; _loadingChannels = true; _channels = []; _searchQuery = ''; });
     for (final n in _channelFocusNodes) n.dispose();
     _channelFocusNodes.clear();
 
@@ -76,43 +92,174 @@ class _LiveScreenState extends State<LiveScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: AppColors.background,
-    appBar: sectionAppBar(context, 'En Vivo', Icons.live_tv, AppColors.celeste),
-    body: Row(children: [
-      SizedBox(width: R.catPanelW(context),
-        child: _loadingCats
+    appBar: _liveAppBar(context),
+    body: Column(children: [
+      // ── Barra de búsqueda de canales ─────────────────────────────────
+      AnimatedSize(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+        child: _showSearch
+          ? _buildSearchBar(context, AppColors.celeste)
+          : const SizedBox.shrink(),
+      ),
+      // ── Contenido principal ─────────────────────────────────────────
+      Expanded(child: Row(children: [
+        SizedBox(width: R.catPanelW(context),
+          child: _loadingCats
+            ? const Center(child: CircularProgressIndicator(color: AppColors.celeste))
+            : ListView.builder(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                itemCount: _categories.length,
+                itemBuilder: (_, i) {
+                  final isVirtual = i < _virtualCats.length;
+                  return CatTile(
+                    name: _categories[i].name,
+                    isSelected: _selectedCatIndex == i,
+                    accentColor: isVirtual ? Colors.amber : AppColors.celeste,
+                    focusNode: _catFocusNodes[i],
+                    autofocus: i == 0,
+                    onSelect: () => _selectCategory(_categories[i], i),
+                  );
+                })),
+        Container(width: 1, color: Colors.white10),
+        Expanded(child: _loadingChannels
           ? const Center(child: CircularProgressIndicator(color: AppColors.celeste))
-          : ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: _categories.length,
-              itemBuilder: (_, i) {
-                final isVirtual = i < _virtualCats.length;
-                return CatTile(
-                  name: _categories[i].name,
-                  isSelected: _selectedCatIndex == i,
-                  accentColor: isVirtual ? Colors.amber : AppColors.celeste,
-                  focusNode: _catFocusNodes[i],
-                  autofocus: i == 0,
-                  onSelect: () => _selectCategory(_categories[i], i),
-                );
-              })),
-      Container(width: 1, color: Colors.white10),
-      Expanded(child: _loadingChannels
-        ? const Center(child: CircularProgressIndicator(color: AppColors.celeste))
-        : _channels.isEmpty
-          ? _emptyState(_selectedCatIndex < _virtualCats.length)
-          : ListView.builder(
-              padding: EdgeInsets.symmetric(vertical: 8, horizontal: R.padding(context)),
-              itemCount: _channels.length,
-              itemBuilder: (_, i) => _ChannelTile(
-                channel: _channels[i], service: widget.service,
-                channels: _channels,
-                channelIndex: i,
-                focusNode: i < _channelFocusNodes.length ? _channelFocusNodes[i] : FocusNode(),
-                autofocus: i == 0,
-                onFavChanged: () => _selectCategory(_categories[_selectedCatIndex], _selectedCatIndex),
-              ))),
+          : _visibleChannels.isEmpty
+            ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Icon(_searchQuery.isNotEmpty ? Icons.search_off : Icons.tv_off,
+                  color: Colors.white24, size: 40),
+                const SizedBox(height: 10),
+                Text(_searchQuery.isNotEmpty
+                  ? 'Sin resultados para "$_searchQuery"'
+                  : (_selectedCatIndex < _virtualCats.length
+                    ? 'Aún no hay nada aquí' : 'Sin canales'),
+                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+              ]))
+            : ListView.builder(
+                padding: EdgeInsets.symmetric(vertical: 8, horizontal: R.padding(context)),
+                itemCount: _visibleChannels.length,
+                itemBuilder: (_, i) {
+                  final ch = _visibleChannels[i];
+                  return _ChannelTile(
+                    channel: ch, service: widget.service,
+                    channels: _channels,
+                    channelIndex: _channels.indexOf(ch),
+                    focusNode: i < _channelFocusNodes.length ? _channelFocusNodes[i] : FocusNode(),
+                    autofocus: i == 0,
+                    onFavChanged: () => _selectCategory(_categories[_selectedCatIndex], _selectedCatIndex),
+                  );
+                })),
+      ])),
     ]),
   );
+
+  PreferredSizeWidget _liveAppBar(BuildContext context) => AppBar(
+    backgroundColor: const Color(0xFF080B14),
+    leading: IconButton(
+      icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white70, size: 20),
+      focusColor: AppColors.celeste.withOpacity(0.2),
+      onPressed: () => Navigator.pop(context),
+    ),
+    title: Row(mainAxisSize: MainAxisSize.min, children: [
+      const Icon(Icons.live_tv, color: AppColors.celeste, size: 20),
+      const SizedBox(width: 8),
+      Text('En Vivo', style: TextStyle(color: Colors.white,
+        fontSize: R.fs(context, 17), fontWeight: FontWeight.w600)),
+    ]),
+    actions: [
+      // Búsqueda de canales (inline)
+      IconButton(
+        icon: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 180),
+          child: Icon(
+            _showSearch ? Icons.search_off_rounded : Icons.search_rounded,
+            key: ValueKey(_showSearch),
+            color: _showSearch ? AppColors.celeste : Colors.white70, size: 22)),
+        tooltip: 'Buscar canal',
+        onPressed: () {
+          setState(() {
+            _showSearch = !_showSearch;
+            if (!_showSearch) { _searchCtrl.clear(); _searchQuery = ''; }
+          });
+        },
+      ),
+      // Búsqueda en EPG
+      IconButton(
+        icon: const Icon(Icons.manage_search_rounded, color: Colors.white70, size: 22),
+        tooltip: 'Buscar en EPG',
+        onPressed: () => Navigator.push(context, MaterialPageRoute(
+          builder: (_) => EpgSearchScreen(service: widget.service, channels: _channels))),
+      ),
+      // Ajuste de zona horaria
+      IconButton(
+        icon: const Icon(Icons.schedule_rounded, color: Colors.white70, size: 22),
+        tooltip: 'Zona horaria EPG',
+        onPressed: () => _showTimezoneSheet(context),
+      ),
+    ],
+    bottom: const PreferredSize(preferredSize: Size.fromHeight(1),
+      child: Divider(color: Colors.white10, height: 1)),
+  );
+
+  // ── Barra de búsqueda inline reutilizable ────────────────────────────────
+  Widget _buildSearchBar(BuildContext ctx, Color accentColor) {
+    final p = R.padding(ctx);
+    return Container(
+      color: const Color(0xFF080B14),
+      padding: EdgeInsets.fromLTRB(p + 6, 8, p + 6, 8),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: accentColor.withOpacity(0.35))),
+        child: Row(children: [
+          Padding(
+            padding: EdgeInsets.only(left: p),
+            child: Icon(Icons.search, color: accentColor, size: 18)),
+          Expanded(child: TextField(
+            controller: _searchCtrl,
+            autofocus: true,
+            style: const TextStyle(color: Colors.white, fontSize: 13),
+            decoration: const InputDecoration(
+              hintText: 'Buscar...',
+              hintStyle: TextStyle(color: AppColors.textSecondary),
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12)),
+            onChanged: (q) => setState(() => _searchQuery = q),
+          )),
+          if (_searchQuery.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.close, color: Colors.white38, size: 16),
+              onPressed: () {
+                _searchCtrl.clear();
+                setState(() => _searchQuery = '');
+              }),
+        ]),
+      ),
+    );
+  }
+
+  void _showTimezoneSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _EpgTimezoneSheet(
+        currentOffset: EpgSettingsService.offsetHours,
+        onChanged: (offset) async {
+          await EpgSettingsService.setOffset(offset);
+          if (!mounted) return;
+          // Recargar EPG de todos los canales visibles
+          setState(() {});
+          for (final n in _channelFocusNodes) n.dispose();
+          _channelFocusNodes.clear();
+          if (_categories.isNotEmpty) {
+            _selectCategory(_categories[_selectedCatIndex], _selectedCatIndex);
+          }
+        },
+      ),
+    );
+  }
 
   Widget _emptyState(bool isVirtual) => Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
     Icon(isVirtual ? Icons.inbox_outlined : Icons.tv_off, color: Colors.white24, size: 48),
@@ -123,7 +270,13 @@ class _LiveScreenState extends State<LiveScreen> {
 }
 
 // ─── Shared AppBar ────────────────────────────────────────────────────────────
-PreferredSizeWidget sectionAppBar(BuildContext ctx, String title, IconData icon, Color color) =>
+PreferredSizeWidget sectionAppBar(
+  BuildContext ctx,
+  String title,
+  IconData icon,
+  Color color, {
+  List<Widget>? actions,
+}) =>
   AppBar(
     backgroundColor: const Color(0xFF080B14),
     leading: IconButton(
@@ -136,6 +289,7 @@ PreferredSizeWidget sectionAppBar(BuildContext ctx, String title, IconData icon,
       Text(title, style: TextStyle(color: Colors.white,
         fontSize: R.fs(ctx, 17), fontWeight: FontWeight.w600)),
     ]),
+    actions: actions,
     bottom: const PreferredSize(preferredSize: Size.fromHeight(1),
       child: Divider(color: Colors.white10, height: 1)),
   );
@@ -201,6 +355,7 @@ class _ChannelTileState extends State<_ChannelTile> {
   bool _focused = false, _isFav = false;
   List<EpgEntry> _epg = [];
   bool _epgLoaded = false;
+  Timer? _epgRefreshTimer;
 
   @override void initState() {
     super.initState();
@@ -219,6 +374,23 @@ class _ChannelTileState extends State<_ChannelTile> {
   Future<void> _loadEpg() async {
     final entries = await widget.service.getShortEpg(widget.channel.id);
     if (mounted) setState(() { _epg = entries; _epgLoaded = true; });
+    _scheduleEpgRefresh();
+  }
+
+  /// Programa un timer para refrescar EPG justo cuando termine el programa actual
+  void _scheduleEpgRefresh() {
+    _epgRefreshTimer?.cancel();
+    final cur = _current;
+    if (cur == null) return;
+    final remaining = cur.end.difference(DateTime.now());
+    // Si ya terminó o termina en menos de 5s, refrescar ahora
+    final delay = remaining.isNegative ? Duration.zero
+        : remaining + const Duration(seconds: 5);
+    _epgRefreshTimer = Timer(delay, () async {
+      if (!mounted) return;
+      XtreamService.clearEpgCacheForChannel(widget.channel.id);
+      await _loadEpg();
+    });
   }
 
   Future<void> _toggleFav() async {
@@ -361,12 +533,24 @@ class _ChannelTileState extends State<_ChannelTile> {
           ),
         ),
 
+        // ── Recordatorio próximo programa ─────────────────────────────
+        if (_next != null && _next!.start.isAfter(DateTime.now()))
+          Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: isPhone ? 4 : 6,
+              vertical: isPhone ? 10 : 14),
+            child: ReminderBell(
+              channel: widget.channel,
+              program: _next!,
+              size: 18,
+            )),
+
         // ── Corazón: FUERA del InkWell para evitar conflicto de gestos ──
         GestureDetector(
           onTap: _toggleFav,
           child: Padding(
             padding: EdgeInsets.symmetric(
-              horizontal: isPhone ? 10 : 14,
+              horizontal: isPhone ? 10 : 12,
               vertical: isPhone ? 10 : 14),
             child: Icon(
               _isFav ? Icons.favorite : Icons.favorite_border,
@@ -377,7 +561,115 @@ class _ChannelTileState extends State<_ChannelTile> {
     );
   }
 
+  @override void dispose() {
+    _epgRefreshTimer?.cancel();
+    super.dispose();
+  }
+
   Widget _icon(double sz) => Container(
     width: sz, height: sz * 0.75, color: AppColors.card,
     child: const Icon(Icons.tv, color: AppColors.celeste, size: 16));
+}
+
+// ─── Panel de zona horaria EPG ────────────────────────────────────────────────
+class _EpgTimezoneSheet extends StatefulWidget {
+  final int currentOffset;
+  final Future<void> Function(int) onChanged;
+  const _EpgTimezoneSheet({required this.currentOffset, required this.onChanged});
+  @override State<_EpgTimezoneSheet> createState() => _EpgTimezoneSheetState();
+}
+
+class _EpgTimezoneSheetState extends State<_EpgTimezoneSheet> {
+  late int _offset;
+  bool _saving = false;
+
+  @override void initState() { super.initState(); _offset = widget.currentOffset; }
+
+  String get _label {
+    if (_offset == 0) return 'Sin ajuste (servidor)';
+    return _offset > 0 ? '+$_offset horas' : '$_offset horas';
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: const Color(0xFF0D1020),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: Colors.white12)),
+    child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Container(margin: const EdgeInsets.only(top: 10, bottom: 2),
+        width: 36, height: 4,
+        decoration: BoxDecoration(
+          color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+      const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Row(children: [
+          Icon(Icons.schedule_rounded, color: AppColors.celeste, size: 20),
+          SizedBox(width: 10),
+          Text('Zona horaria EPG', style: TextStyle(
+            color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+        ]),
+      ),
+      const Divider(color: Colors.white10, height: 1),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+        child: Column(children: [
+          Text(_label, style: const TextStyle(
+            color: AppColors.celeste, fontSize: 20, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          const Text('Ajusta si los horarios del EPG no coinciden con tu zona horaria',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white38, fontSize: 12)),
+          const SizedBox(height: 16),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: AppColors.celeste,
+              inactiveTrackColor: Colors.white12,
+              thumbColor: AppColors.celeste,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+              trackHeight: 4,
+            ),
+            child: Slider(
+              value: _offset.toDouble(),
+              min: -12, max: 12,
+              divisions: 24,
+              onChanged: (v) => setState(() => _offset = v.round()),
+            ),
+          ),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            const Text('-12h', style: TextStyle(color: Colors.white30, fontSize: 11)),
+            const Text('0', style: TextStyle(color: Colors.white30, fontSize: 11)),
+            const Text('+12h', style: TextStyle(color: Colors.white30, fontSize: 11)),
+          ]),
+          const SizedBox(height: 20),
+          Row(children: [
+            Expanded(child: OutlinedButton(
+              onPressed: () => Navigator.pop(context),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white38,
+                side: const BorderSide(color: Colors.white12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              child: const Text('Cancelar'))),
+            const SizedBox(width: 12),
+            Expanded(child: ElevatedButton(
+              onPressed: _saving ? null : () async {
+                setState(() => _saving = true);
+                await widget.onChanged(_offset);
+                if (mounted) Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.celeste,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              child: _saving
+                ? const SizedBox(width: 18, height: 18,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                : const Text('Aplicar'))),
+          ]),
+        ]),
+      ),
+      const SizedBox(height: 8),
+    ]),
+  );
 }

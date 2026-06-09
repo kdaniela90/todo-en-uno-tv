@@ -8,8 +8,12 @@ import 'search_screen.dart';
 import '../services/xtream_service.dart';
 import '../services/parental_service.dart';
 import '../services/storage_service.dart';
+import '../services/content_refresh_service.dart';
 import '../widgets/animated_remote.dart';
 import 'parental_screen.dart';
+import 'multiview_screen.dart';
+import 'speed_test_sheet.dart';
+import 'reminders_screen.dart';
 
 class HubScreen extends StatefulWidget {
   final Map<String, String> credentials;
@@ -20,7 +24,7 @@ class HubScreen extends StatefulWidget {
 class _HubScreenState extends State<HubScreen> {
   late XtreamService _service;
   int _focused = 0;
-  final List<FocusNode> _focusNodes = List.generate(7, (_) => FocusNode());
+  final List<FocusNode> _focusNodes = List.generate(8, (_) => FocusNode());
 
   String get _expDate {
     final raw = widget.credentials['exp_date'] ?? '';
@@ -46,6 +50,24 @@ class _HubScreenState extends State<HubScreen> {
         if (_focusNodes[idx].hasFocus && mounted) setState(() => _focused = idx);
       });
     }
+    _checkDailyRefresh();
+  }
+
+  Future<void> _checkDailyRefresh() async {
+    final refreshed = await ContentRefreshService.checkAndRefresh();
+    if (refreshed && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Row(children: [
+          Icon(Icons.sync_rounded, color: Colors.white, size: 16),
+          SizedBox(width: 8),
+          Text('Contenido actualizado automáticamente'),
+        ]),
+        backgroundColor: AppColors.celeste.withOpacity(0.85),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: const Duration(seconds: 3),
+      ));
+    }
   }
 
   @override
@@ -53,6 +75,11 @@ class _HubScreenState extends State<HubScreen> {
 
   void _open(int index) async {
     if (index == 4) { await _openParental(); return; }
+    if (index == 5) {
+      Navigator.push(context, MaterialPageRoute(
+        builder: (_) => MultiViewScreen(service: _service)));
+      return;
+    }
     final screens = [
       LiveScreen(service: _service),
       MoviesScreen(service: _service),
@@ -147,6 +174,48 @@ class _HubScreenState extends State<HubScreen> {
         const Divider(color: Colors.white10),
         const SizedBox(height: 10),
 
+        // ── Prueba de velocidad ───────────────────────────────────────
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.speed_rounded, size: 18),
+            label: const Text('Prueba de Velocidad'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.celeste.withOpacity(0.15),
+              foregroundColor: AppColors.celeste,
+              elevation: 0,
+              side: BorderSide(color: AppColors.celeste.withOpacity(0.4)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(vertical: 12)),
+            onPressed: () {
+              Navigator.pop(ctx);
+              showSpeedTestSheet(context,
+                serverUrl: widget.credentials['server'] ?? '');
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        // ── Ver Recordatorios ────────────────────────────────────────
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.notifications_active_rounded, size: 18),
+            label: const Text('Ver Recordatorios'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFFFB300),
+              side: const BorderSide(color: Color(0x66FFB300)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(vertical: 12)),
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.push(context, MaterialPageRoute(
+                builder: (_) => const RemindersScreen()));
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+
         // ── Botón de Refresh ─────────────────────────────────────────
         SizedBox(
           width: double.infinity,
@@ -158,8 +227,8 @@ class _HubScreenState extends State<HubScreen> {
               side: BorderSide(color: AppColors.celeste.withOpacity(0.5)),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               padding: const EdgeInsets.symmetric(vertical: 12)),
-            onPressed: () {
-              XtreamService.clearEpgCache();
+            onPressed: () async {
+              await ContentRefreshService.forceRefresh();
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -193,11 +262,12 @@ class _HubScreenState extends State<HubScreen> {
   ]);
 
   static const _cards = [
-    (Icons.live_tv,         'En Vivo',    'Canales en tiempo real',  Color(0xFF00C3CC)),
-    (Icons.movie_outlined,  'Películas',  'Catálogo completo',        Color(0xFF3372E3)),
-    (Icons.tv,              'Series',     'Temporadas y episodios',   Color(0xFF7426EF)),
-    (Icons.search,          'Buscar',     'Todo el contenido',        Color(0xFF5DE0E6)),
-    (Icons.shield_outlined, 'Parental',   'Control de contenido',     Color(0xFFE86C2A)),
+    (Icons.live_tv,             'En Vivo',     'Canales en tiempo real',  Color(0xFF00C3CC)),
+    (Icons.movie_outlined,      'Películas',   'Catálogo completo',        Color(0xFF3372E3)),
+    (Icons.tv,                  'Series',      'Temporadas y episodios',   Color(0xFF7426EF)),
+    (Icons.search,              'Buscar',      'Todo el contenido',        Color(0xFF5DE0E6)),
+    (Icons.shield_outlined,     'Parental',    'Control de contenido',     Color(0xFFE86C2A)),
+    (Icons.grid_view_rounded,   'Multi-Vista', 'Hasta 4 canales a la vez', Color(0xFF1DB954)),
   ];
 
   @override
@@ -221,9 +291,9 @@ class _HubScreenState extends State<HubScreen> {
                 style: TextStyle(color: Colors.white, fontSize: isPhone ? 14 : 20,
                   fontWeight: FontWeight.bold, letterSpacing: 1.5)),
               const Spacer(),
-              _TopButton(focusNode: _focusNodes[5], icon: Icons.info_outline, onTap: _showInfo),
+              _TopButton(focusNode: _focusNodes[6], icon: Icons.info_outline, onTap: _showInfo),
               const SizedBox(width: 6),
-              _TopButton(focusNode: _focusNodes[6], icon: Icons.logout, onTap: _logout),
+              _TopButton(focusNode: _focusNodes[7], icon: Icons.logout, onTap: _logout),
             ]),
           ),
           const Divider(color: Colors.white10, height: 1),

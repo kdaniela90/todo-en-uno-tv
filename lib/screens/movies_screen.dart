@@ -24,6 +24,16 @@ class _MoviesScreenState extends State<MoviesScreen> {
   final _catFocusNodes = <FocusNode>[];
   final _movieFocusNodes = <FocusNode>[];
 
+  // ── Búsqueda inline ──────────────────────────────────────────────────────
+  bool _showSearch = false;
+  String _searchQuery = '';
+  final _searchCtrl = TextEditingController();
+
+  List<Movie> get _visibleMovies => _searchQuery.isEmpty
+      ? _movies
+      : _movies.where((m) =>
+          m.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+
   static final _virtualCats = [
     Category(id: HistoryService.recentCatId, name: 'Recientes'),
     Category(id: HistoryService.favCatId,    name: 'Favoritos'),
@@ -32,6 +42,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
   @override void initState() { super.initState(); _loadCategories(); }
   @override void dispose() {
     for (final n in [..._catFocusNodes, ..._movieFocusNodes]) n.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -51,7 +62,8 @@ class _MoviesScreenState extends State<MoviesScreen> {
   }
 
   Future<void> _selectCategory(Category cat, int index) async {
-    setState(() { _selectedCatIndex = index; _loadingMovies = true; _movies = []; });
+    _searchCtrl.clear();
+    setState(() { _selectedCatIndex = index; _loadingMovies = true; _movies = []; _searchQuery = ''; });
     for (final n in _movieFocusNodes) n.dispose(); _movieFocusNodes.clear();
 
     List<Movie> m;
@@ -76,46 +88,108 @@ class _MoviesScreenState extends State<MoviesScreen> {
 
   @override Widget build(BuildContext context) {
     final cols = R.gridCols(context);
+    final p    = R.padding(context);
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: sectionAppBar(context, 'Películas', Icons.movie_outlined, AppColors.azul),
-      body: Row(children: [
-        SizedBox(width: R.catPanelW(context),
-          child: _loadingCats
-            ? const Center(child: CircularProgressIndicator(color: AppColors.celeste))
-            : ListView.builder(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: _categories.length,
-                itemBuilder: (_, i) => CatTile(
-                  name: _categories[i].name,
-                  isSelected: _selectedCatIndex == i,
-                  accentColor: i < _virtualCats.length ? Colors.amber : AppColors.azul,
-                  focusNode: _catFocusNodes[i], autofocus: i == 0,
-                  onSelect: () => _selectCategory(_categories[i], i)))),
-        Container(width: 1, color: Colors.white10),
-        Expanded(child: _loadingMovies
-          ? const Center(child: CircularProgressIndicator(color: AppColors.azul))
-          : _movies.isEmpty
-            ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Icon(_selectedCatIndex < _virtualCats.length ? Icons.inbox_outlined : Icons.movie_outlined,
-                  color: Colors.white24, size: 48),
-                const SizedBox(height: 12),
-                Text(_selectedCatIndex < _virtualCats.length ? 'Aún no hay nada aquí' : 'Sin películas',
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
-              ]))
-            : GridView.builder(
-                padding: EdgeInsets.all(R.padding(context)),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: cols, childAspectRatio: 0.65,
-                  crossAxisSpacing: 6, mainAxisSpacing: 6),
-                itemCount: _movies.length,
-                itemBuilder: (_, i) => _MovieCard(
-                  movie: _movies[i], service: widget.service,
-                  focusNode: i < _movieFocusNodes.length ? _movieFocusNodes[i] : FocusNode(),
-                  autofocus: i == 0,
-                  onFavChanged: () => _selectCategory(_categories[_selectedCatIndex], _selectedCatIndex),
-                ))),
+      appBar: sectionAppBar(context, 'Películas', Icons.movie_outlined, AppColors.azul,
+        actions: [
+          IconButton(
+            icon: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: Icon(
+                _showSearch ? Icons.search_off_rounded : Icons.search_rounded,
+                key: ValueKey(_showSearch),
+                color: _showSearch ? AppColors.azul : Colors.white70, size: 22)),
+            tooltip: 'Buscar película',
+            onPressed: () => setState(() {
+              _showSearch = !_showSearch;
+              if (!_showSearch) { _searchCtrl.clear(); _searchQuery = ''; }
+            }),
+          ),
+        ]),
+      body: Column(children: [
+        // ── Barra de búsqueda ──────────────────────────────────────────
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          child: _showSearch ? _buildSearchBar(context, AppColors.azul) : const SizedBox.shrink(),
+        ),
+        // ── Contenido ──────────────────────────────────────────────────
+        Expanded(child: Row(children: [
+          SizedBox(width: R.catPanelW(context),
+            child: _loadingCats
+              ? const Center(child: CircularProgressIndicator(color: AppColors.celeste))
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: _categories.length,
+                  itemBuilder: (_, i) => CatTile(
+                    name: _categories[i].name,
+                    isSelected: _selectedCatIndex == i,
+                    accentColor: i < _virtualCats.length ? Colors.amber : AppColors.azul,
+                    focusNode: _catFocusNodes[i], autofocus: i == 0,
+                    onSelect: () => _selectCategory(_categories[i], i)))),
+          Container(width: 1, color: Colors.white10),
+          Expanded(child: _loadingMovies
+            ? const Center(child: CircularProgressIndicator(color: AppColors.azul))
+            : _visibleMovies.isEmpty
+              ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(_searchQuery.isNotEmpty ? Icons.search_off : (
+                    _selectedCatIndex < _virtualCats.length ? Icons.inbox_outlined : Icons.movie_outlined),
+                    color: Colors.white24, size: 48),
+                  const SizedBox(height: 12),
+                  Text(_searchQuery.isNotEmpty
+                    ? 'Sin resultados para "$_searchQuery"'
+                    : (_selectedCatIndex < _virtualCats.length ? 'Aún no hay nada aquí' : 'Sin películas'),
+                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+                ]))
+              : GridView.builder(
+                  padding: EdgeInsets.all(p),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: cols, childAspectRatio: 0.65,
+                    crossAxisSpacing: 6, mainAxisSpacing: 6),
+                  itemCount: _visibleMovies.length,
+                  itemBuilder: (_, i) => _MovieCard(
+                    movie: _visibleMovies[i], service: widget.service,
+                    focusNode: i < _movieFocusNodes.length ? _movieFocusNodes[i] : FocusNode(),
+                    autofocus: i == 0,
+                    onFavChanged: () => _selectCategory(_categories[_selectedCatIndex], _selectedCatIndex),
+                  ))),
+        ])),
       ]),
+    );
+  }
+
+  Widget _buildSearchBar(BuildContext ctx, Color accentColor) {
+    final p = R.padding(ctx);
+    return Container(
+      color: const Color(0xFF080B14),
+      padding: EdgeInsets.fromLTRB(p + 6, 8, p + 6, 8),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: accentColor.withOpacity(0.35))),
+        child: Row(children: [
+          Padding(
+            padding: EdgeInsets.only(left: p),
+            child: Icon(Icons.search, color: accentColor, size: 18)),
+          Expanded(child: TextField(
+            controller: _searchCtrl,
+            autofocus: true,
+            style: const TextStyle(color: Colors.white, fontSize: 13),
+            decoration: const InputDecoration(
+              hintText: 'Buscar película...',
+              hintStyle: TextStyle(color: AppColors.textSecondary),
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12)),
+            onChanged: (q) => setState(() => _searchQuery = q),
+          )),
+          if (_searchQuery.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.close, color: Colors.white38, size: 16),
+              onPressed: () { _searchCtrl.clear(); setState(() => _searchQuery = ''); }),
+        ]),
+      ),
     );
   }
 }

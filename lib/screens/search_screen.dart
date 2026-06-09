@@ -24,10 +24,13 @@ class _SearchScreenState extends State<SearchScreen> {
   List<Channel> _liveResults   = [];
   List<Movie>   _movieResults  = [];
   List<Series>  _seriesResults = [];
-  // Guarda los IDs de películas que coinciden por actor (para mostrar el cast)
   final Set<String> _actorMatchIds = {};
-  bool _loading  = false;
-  bool _searched = false;
+  bool _loading       = false;
+  bool _searched      = false;
+  // Búsqueda profunda de actores
+  bool _actorSearching = false;   // prefetch en curso
+  int  _actorDone      = 0;
+  int  _actorTotal     = 0;
 
   @override
   void dispose() {
@@ -40,9 +43,11 @@ class _SearchScreenState extends State<SearchScreen> {
     final query = q.trim().toLowerCase();
     if (query.isEmpty) return;
 
-    // Quitar el teclado antes de buscar
     FocusScope.of(context).unfocus();
-    setState(() { _loading = true; _searched = false; _actorMatchIds.clear(); });
+    setState(() {
+      _loading = true; _searched = false;
+      _actorMatchIds.clear(); _actorSearching = false;
+    });
 
     final results = await Future.wait([
       widget.service.getLiveStreams(),
@@ -55,22 +60,22 @@ class _SearchScreenState extends State<SearchScreen> {
     final movies   = results[1] as List<Movie>;
     final series   = results[2] as List<Series>;
 
-    // Canales y series: solo por nombre
     final liveR   = channels.where((c) => c.name.toLowerCase().contains(query)).toList();
     final seriesR = series.where((s) => s.name.toLowerCase().contains(query)).toList();
 
-    // Películas: nombre OR actor/cast
-    final movieR = movies.where((m) =>
-      m.name.toLowerCase().contains(query) ||
-      m.cast.toLowerCase().contains(query)).toList();
+    // Películas: nombre OR cast del caché (de películas ya visitadas)
+    final movieR = movies.where((m) {
+      final cachedCast = XtreamService.cachedCast(m.id);
+      return m.name.toLowerCase().contains(query) ||
+             cachedCast.toLowerCase().contains(query);
+    }).toList();
 
-    // Guardar cuáles coincidieron por actor (para mostrar el cast como subtítulo)
     final actorIds = <String>{};
     for (final m in movieR) {
-      if (m.cast.toLowerCase().contains(query)) actorIds.add(m.id);
+      final cast = XtreamService.cachedCast(m.id);
+      if (cast.toLowerCase().contains(query)) actorIds.add(m.id);
     }
 
-    // Ordenar películas: primero las que coinciden en actor, luego por título
     movieR.sort((a, b) {
       final aActor = actorIds.contains(a.id) ? 0 : 1;
       final bActor = actorIds.contains(b.id) ? 0 : 1;
@@ -84,6 +89,44 @@ class _SearchScreenState extends State<SearchScreen> {
       _actorMatchIds.addAll(actorIds);
       _loading  = false;
       _searched = true;
+    });
+
+    // Si no hay resultados en películas, ofrecer búsqueda profunda de actores
+    // (descarga vod_info de todas las películas para indexar el cast)
+    if (movieR.isEmpty && !mounted) return;
+    if (movieR.isEmpty) {
+      _startActorDeepSearch(movies, query);
+    }
+  }
+
+  void _startActorDeepSearch(List<Movie> allMovies, String query) {
+    setState(() {
+      _actorSearching = true;
+      _actorDone = 0;
+      _actorTotal = allMovies.length;
+    });
+
+    widget.service.prefetchCast(
+      allMovies,
+      onProgress: (done, total) {
+        if (!mounted) return;
+        setState(() { _actorDone = done; _actorTotal = total; });
+      },
+    ).then((_) {
+      if (!mounted) return;
+      // Re-buscar con el índice completo
+      final movieR = allMovies.where((m) {
+        final cast = XtreamService.cachedCast(m.id);
+        return cast.toLowerCase().contains(query);
+      }).toList();
+
+      final actorIds = {for (final m in movieR) m.id};
+
+      setState(() {
+        _movieResults  = movieR;
+        _actorMatchIds.addAll(actorIds);
+        _actorSearching = false;
+      });
     });
   }
 
@@ -146,6 +189,28 @@ class _SearchScreenState extends State<SearchScreen> {
             ]),
           ),
         ),
+
+        // ── Progreso búsqueda de actores ────────────────────────────────────
+        if (_actorSearching)
+          Container(
+            margin: EdgeInsets.fromLTRB(p + 6, 0, p + 6, p),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.celeste.withOpacity(0.3)),
+            ),
+            child: Row(children: [
+              SizedBox(width: 16, height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2, color: AppColors.celeste,
+                  value: _actorTotal > 0 ? _actorDone / _actorTotal : null)),
+              const SizedBox(width: 12),
+              Expanded(child: Text(
+                'Buscando actores... $_actorDone / $_actorTotal',
+                style: const TextStyle(color: Colors.white60, fontSize: 13))),
+            ]),
+          ),
 
         // ── Resultados ───────────────────────────────────────────────────────
         Expanded(child: !_searched

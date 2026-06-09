@@ -13,6 +13,13 @@ class EpgEntry {
     required this.end,
   });
 
+  /// Devuelve una copia con los tiempos ajustados por [hours] horas (zona horaria)
+  EpgEntry withOffset(int hours) => EpgEntry(
+    title: title, description: description,
+    start: start.add(Duration(hours: hours)),
+    end:   end.add(Duration(hours: hours)),
+  );
+
   /// Porcentaje de avance del programa actual (0.0 – 1.0)
   double get progress {
     final now = DateTime.now();
