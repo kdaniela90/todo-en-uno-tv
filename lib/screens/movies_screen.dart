@@ -6,7 +6,8 @@ import '../services/xtream_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
 import 'live_screen.dart' show sectionAppBar, CatTile;
-import 'player_screen.dart';
+import 'movie_detail_screen.dart';
+
 
 class MoviesScreen extends StatefulWidget {
   final XtreamService service;
@@ -116,9 +117,8 @@ class _MovieCardState extends State<_MovieCard> {
     focusNode: widget.focusNode,
     autofocus: widget.autofocus,
     focusColor: Colors.transparent,
-    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerScreen(
-      title: widget.movie.name,
-      streamUrl: widget.service.vodStreamUrl(widget.movie.id, widget.movie.containerExtension)))),
+    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MovieDetailScreen(
+      movie: widget.movie, service: widget.service))),
     child: AnimatedContainer(
       duration: const Duration(milliseconds: 150),
       transform: Matrix4.identity()..scale(_focused ? 1.05 : 1.0),

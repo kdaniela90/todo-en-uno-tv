@@ -82,4 +82,22 @@ class XtreamService {
   String liveStreamUrl(String streamId) => '$server/live/$username/$password/$streamId.ts';
   String vodStreamUrl(String streamId, String ext) => '$server/movie/$username/$password/$streamId.$ext';
   String movieStreamUrl(String streamId, String ext) => vodStreamUrl(streamId, ext);
+
+  Future<Map<String, dynamic>?> getVodInfo(String streamId) async {
+    try {
+      final url = '$_base&action=get_vod_info&vod_id=$streamId';
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) return json.decode(response.body);
+    } catch (_) {}
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> getSeriesInfo(String seriesId) async {
+    try {
+      final url = '$_base&action=get_series_info&series_id=$seriesId';
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) return json.decode(response.body);
+    } catch (_) {}
+    return null;
+  }
 }

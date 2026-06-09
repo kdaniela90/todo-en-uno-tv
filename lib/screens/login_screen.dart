@@ -20,6 +20,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
   static const String _server = 'http://allinonestream.fans:8080';
 
+  // Credenciales de prueba precargadas
+  @override
+  void initState() {
+    super.initState();
+    _userCtrl.text = '89142158';
+    _passCtrl.text = '0416531';
+  }
+
   @override
   void dispose() {
     _userCtrl.dispose(); _passCtrl.dispose();
