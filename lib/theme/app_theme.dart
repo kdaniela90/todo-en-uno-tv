@@ -7,7 +7,7 @@ class AppColors {
   static const Color morado = Color(0xFF7426EF);
   static const Color gradStart = Color(0xFF5DE0E6);
   static const Color gradEnd = Color(0xFF004AAD);
-  static const Color background = Color(0xFF0A0E1A);
+  static const Color background = Color(0xFF060C1B);
   static const Color surface = Color(0xFF141828);
   static const Color card = Color(0xFF1E2436);
   static const Color textPrimary = Color(0xFFFFFFFF);

@@ -4,6 +4,7 @@ import '../models/category.dart';
 import '../models/channel.dart';
 import '../services/xtream_service.dart';
 import '../services/history_service.dart';
+import '../services/parental_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
 import 'player_screen.dart';
@@ -23,8 +24,8 @@ class _LiveScreenState extends State<LiveScreen> {
   final _channelFocusNodes = <FocusNode>[];
 
   static final _virtualCats = [
-    Category(id: HistoryService.recentCatId, name: '🕐 Recientes'),
-    Category(id: HistoryService.favCatId,    name: '❤️ Favoritos'),
+    Category(id: HistoryService.recentCatId, name: 'Recientes'),
+    Category(id: HistoryService.favCatId,    name: 'Favoritos'),
   ];
 
   @override void initState() { super.initState(); _loadCategories(); }
@@ -35,9 +36,15 @@ class _LiveScreenState extends State<LiveScreen> {
   }
 
   Future<void> _loadCategories() async {
-    final cats = await widget.service.getLiveCategories();
+    final results = await Future.wait([
+      widget.service.getLiveCategories(),
+      ParentalService.getBlocked('live'),
+    ]);
     if (!mounted) return;
-    final all = [..._virtualCats, ...cats];
+    final cats    = results[0] as List<Category>;
+    final blocked = results[1] as Set<String>;
+    final visible = cats.where((c) => !blocked.contains(c.id)).toList();
+    final all = [..._virtualCats, ...visible];
     _catFocusNodes.addAll(List.generate(all.length, (_) => FocusNode()));
     setState(() { _categories = all; _loadingCats = false; });
     if (all.isNotEmpty) _selectCategory(all[0], 0);

@@ -5,6 +5,9 @@ import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import '../theme/app_theme.dart';
 
+// TV D-pad seek amount
+const _kSeekSecs = 10;
+
 class PlayerScreen extends StatefulWidget {
   final String title;
   final String streamUrl;
@@ -79,6 +82,38 @@ class _PlayerScreenState extends State<PlayerScreen> {
     super.dispose();
   }
 
+  // D-pad / keyboard seek — called by Focus.onKeyEvent
+  KeyEventResult _onKey(FocusNode _, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (_videoController.value.duration == Duration.zero) {
+      return KeyEventResult.ignored;
+    }
+    final pos = _videoController.value.position;
+    final dur = _videoController.value.duration;
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight ||
+        event.logicalKey == LogicalKeyboardKey.mediaFastForward) {
+      final next = pos + const Duration(seconds: _kSeekSecs);
+      _videoController.seekTo(next < dur ? next : dur);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
+        event.logicalKey == LogicalKeyboardKey.mediaRewind) {
+      final prev = pos - const Duration(seconds: _kSeekSecs);
+      _videoController.seekTo(prev > Duration.zero ? prev : Duration.zero);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.select ||
+        event.logicalKey == LogicalKeyboardKey.space) {
+      _videoController.value.isPlaying
+        ? _videoController.pause()
+        : _videoController.play();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   void _openSettings() {
     _hideTimer?.cancel();
     setState(() => _showBar = true);
@@ -91,46 +126,52 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Colors.black,
-    body: Stack(children: [
-      // ── Reproductor — maneja sus propios gestos (seek, pausa, volumen)
-      if (_hasError)
-        _buildError()
-      else if (_chewieController == null)
-        const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          CircularProgressIndicator(color: AppColors.celeste),
-          SizedBox(height: 16),
-          Text('Cargando stream...', style: TextStyle(color: Colors.white54)),
-        ]))
-      else
-        Chewie(controller: _chewieController!),
+  Widget build(BuildContext context) => Focus(
+    autofocus: true,
+    onKeyEvent: _onKey,
+    child: Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(children: [
+        // ── Reproductor Chewie (gestiona seek, pausa y controles nativos)
+        if (_hasError)
+          _buildError()
+        else if (_chewieController == null)
+          const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            CircularProgressIndicator(color: AppColors.celeste),
+            SizedBox(height: 16),
+            Text('Cargando stream...', style: TextStyle(color: Colors.white54)),
+          ]))
+        else
+          // GestureDetector solo en la mitad superior para show/hide topbar
+          // sin interferir con la barra de progreso de Chewie (zona inferior)
+          Stack(children: [
+            Chewie(controller: _chewieController!),
+            Positioned(
+              top: 0, left: 0, right: 0,
+              height: MediaQuery.of(context).size.height * 0.7,
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: _onTapScreen,
+                child: const SizedBox.expand(),
+              ),
+            ),
+          ]),
 
-      // ── Zona de tap translúcida — no bloquea gestos de chewie
-      if (!_hasError && _chewieController != null)
-        Positioned.fill(
-          child: GestureDetector(
-            // translucent: nuestro onTap dispara Y los eventos siguen a chewie
-            behavior: HitTestBehavior.translucent,
-            onTap: _onTapScreen,
-            child: const SizedBox.expand(),
+        // ── Barra superior auto-ocultable
+        if (!_hasError)
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeInOut,
+            top: _showBar ? 0 : -80,
+            left: 0, right: 0,
+            child: _TopBar(
+              title: widget.title,
+              onBack: () => Navigator.pop(context),
+              onSettings: _chewieController != null ? _openSettings : null,
+            ),
           ),
-        ),
-
-      // ── Barra superior auto-ocultable
-      if (!_hasError)
-        AnimatedPositioned(
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeInOut,
-          top: _showBar ? 0 : -80,
-          left: 0, right: 0,
-          child: _TopBar(
-            title: widget.title,
-            onBack: () => Navigator.pop(context),
-            onSettings: _chewieController != null ? _openSettings : null,
-          ),
-        ),
-    ]),
+      ]),
+    ),
   );
 
   Widget _buildError() => Center(child: Column(mainAxisSize: MainAxisSize.min, children: [

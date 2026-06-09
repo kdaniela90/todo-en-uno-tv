@@ -4,9 +4,11 @@ import '../models/category.dart';
 import '../models/series.dart';
 import '../services/xtream_service.dart';
 import '../services/history_service.dart';
+import '../services/parental_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
 import 'live_screen.dart' show sectionAppBar, CatTile;
+import 'series_detail_screen.dart';
 
 class SeriesScreen extends StatefulWidget {
   final XtreamService service;
@@ -24,8 +26,8 @@ class _SeriesScreenState extends State<SeriesScreen> {
   final _seriesFocusNodes = <FocusNode>[];
 
   static final _virtualCats = [
-    Category(id: HistoryService.recentCatId, name: '🕐 Recientes'),
-    Category(id: HistoryService.favCatId,    name: '❤️ Favoritos'),
+    Category(id: HistoryService.recentCatId, name: 'Recientes'),
+    Category(id: HistoryService.favCatId,    name: 'Favoritos'),
   ];
 
   @override void initState() { super.initState(); _loadCategories(); }
@@ -38,9 +40,15 @@ class _SeriesScreenState extends State<SeriesScreen> {
   }
 
   Future<void> _loadCategories() async {
-    final cats = await widget.service.getSeriesCategories();
+    final results = await Future.wait([
+      widget.service.getSeriesCategories(),
+      ParentalService.getBlocked('series'),
+    ]);
     if (!mounted) return;
-    final all = [..._virtualCats, ...cats];
+    final cats    = results[0] as List<Category>;
+    final blocked = results[1] as Set<String>;
+    final visible = cats.where((c) => !blocked.contains(c.id)).toList();
+    final all = [..._virtualCats, ...visible];
     _catFocusNodes.addAll(List.generate(all.length, (_) => FocusNode()));
     setState(() { _categories = all; _loadingCats = false; });
     if (all.isNotEmpty) _selectCategory(all[0], 0);
@@ -112,6 +120,7 @@ class _SeriesScreenState extends State<SeriesScreen> {
                 itemCount: _series.length,
                 itemBuilder: (_, i) => _SeriesCard(
                   series: _series[i],
+                  service: widget.service,
                   focusNode: i < _seriesFocusNodes.length ? _seriesFocusNodes[i] : FocusNode(),
                   autofocus: i == 0,
                   onFavChanged: () => _selectCategory(_categories[_selectedCatIndex], _selectedCatIndex),
@@ -124,11 +133,12 @@ class _SeriesScreenState extends State<SeriesScreen> {
 
 class _SeriesCard extends StatefulWidget {
   final Series series;
+  final XtreamService service;
   final FocusNode focusNode;
   final bool autofocus;
   final VoidCallback onFavChanged;
-  const _SeriesCard({required this.series, required this.focusNode,
-    this.autofocus = false, required this.onFavChanged});
+  const _SeriesCard({required this.series, required this.service,
+    required this.focusNode, this.autofocus = false, required this.onFavChanged});
   @override State<_SeriesCard> createState() => _SeriesCardState();
 }
 class _SeriesCardState extends State<_SeriesCard> {
@@ -158,9 +168,8 @@ class _SeriesCardState extends State<_SeriesCard> {
       onTap: () {
         HistoryService.addRecent(HistoryService.series,
           {'id': widget.series.id, 'name': widget.series.name, 'icon': widget.series.cover});
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Próximamente: ${widget.series.name}'),
-            duration: const Duration(seconds: 2)));
+        Navigator.push(context, MaterialPageRoute(builder: (_) =>
+          SeriesDetailScreen(series: widget.series, service: widget.service)));
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
@@ -190,12 +199,6 @@ class _SeriesCardState extends State<_SeriesCard> {
         ),
       ),
     ),
-    Positioned(top: 4, right: 4,
-      child: GestureDetector(onTap: _toggleFav,
-        child: Container(padding: const EdgeInsets.all(3),
-          decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(20)),
-          child: Icon(_isFav ? Icons.favorite : Icons.favorite_border,
-            color: _isFav ? Colors.red : Colors.white60, size: 14)))),
   ]);
   Widget _ph() => Container(color: AppColors.card,
     child: const Icon(Icons.tv_outlined, color: AppColors.morado, size: 28));

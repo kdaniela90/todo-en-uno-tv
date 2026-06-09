@@ -6,6 +6,9 @@ import 'movies_screen.dart';
 import 'series_screen.dart';
 import 'search_screen.dart';
 import '../services/xtream_service.dart';
+import '../services/parental_service.dart';
+import '../widgets/animated_remote.dart';
+import 'parental_screen.dart';
 
 class HubScreen extends StatefulWidget {
   final Map<String, String> credentials;
@@ -16,7 +19,7 @@ class HubScreen extends StatefulWidget {
 class _HubScreenState extends State<HubScreen> {
   late XtreamService _service;
   int _focused = 0;
-  final List<FocusNode> _focusNodes = List.generate(5, (_) => FocusNode());
+  final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
 
   String get _expDate {
     final raw = widget.credentials['exp_date'] ?? '';
@@ -47,7 +50,8 @@ class _HubScreenState extends State<HubScreen> {
   @override
   void dispose() { for (final n in _focusNodes) n.dispose(); super.dispose(); }
 
-  void _open(int index) {
+  void _open(int index) async {
+    if (index == 4) { await _openParental(); return; }
     final screens = [
       LiveScreen(service: _service),
       MoviesScreen(service: _service),
@@ -57,6 +61,41 @@ class _HubScreenState extends State<HubScreen> {
     if (index < screens.length) {
       Navigator.push(context, MaterialPageRoute(builder: (_) => screens[index]));
     }
+  }
+
+  Future<void> _openParental() async {
+    final hasPinAlready = await ParentalService.hasPin();
+
+    if (!hasPinAlready) {
+      // First time: create PIN
+      if (!mounted) return;
+      final pin1 = await showPinDialog(context, title: 'Crea tu PIN de 4 dígitos');
+      if (pin1 == null || pin1.length < 4) return;
+      if (!mounted) return;
+      final pin2 = await showPinDialog(context, title: 'Confirma tu PIN');
+      if (pin2 == null) return;
+      if (pin1 != pin2) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Los PINs no coinciden'), backgroundColor: Colors.red));
+        return;
+      }
+      await ParentalService.setPin(pin1);
+    } else {
+      // Verify existing PIN
+      if (!mounted) return;
+      final entered = await showPinDialog(context, title: 'Control Parental\nIngresa tu PIN');
+      if (entered == null) return;
+      final ok = await ParentalService.checkPin(entered);
+      if (!ok) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('PIN incorrecto'), backgroundColor: Colors.red,
+            duration: Duration(seconds: 2)));
+        return;
+      }
+    }
+    if (!mounted) return;
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => ParentalScreen(service: _service)));
   }
 
   void _showInfo() {
@@ -93,10 +132,11 @@ class _HubScreenState extends State<HubScreen> {
   ]);
 
   static const _cards = [
-    (Icons.live_tv,       'En Vivo',   'Canales en tiempo real',   Color(0xFF00C3CC)),
-    (Icons.movie_outlined,'Películas', 'Catálogo completo',         Color(0xFF3372E3)),
-    (Icons.tv,            'Series',    'Temporadas y episodios',    Color(0xFF7426EF)),
-    (Icons.search,        'Buscar',    'Todo el contenido',         Color(0xFF5DE0E6)),
+    (Icons.live_tv,         'En Vivo',    'Canales en tiempo real',  Color(0xFF00C3CC)),
+    (Icons.movie_outlined,  'Películas',  'Catálogo completo',        Color(0xFF3372E3)),
+    (Icons.tv,              'Series',     'Temporadas y episodios',   Color(0xFF7426EF)),
+    (Icons.search,          'Buscar',     'Todo el contenido',        Color(0xFF5DE0E6)),
+    (Icons.shield_outlined, 'Parental',   'Control de contenido',     Color(0xFFE86C2A)),
   ];
 
   @override
@@ -108,20 +148,19 @@ class _HubScreenState extends State<HubScreen> {
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft, end: Alignment.bottomRight,
-            colors: [Color(0xFF0A0E1A), Color(0xFF0D1530), Color(0xFF0A0E1A)])),
+            colors: [Color(0xFF060C1B), Color(0xFF0A1128), Color(0xFF060C1B)])),
         child: SafeArea(child: Column(children: [
           // TOP BAR
           Padding(
             padding: EdgeInsets.symmetric(horizontal: isPhone ? 14 : 24, vertical: isPhone ? 10 : 14),
             child: Row(children: [
-              Image.asset('assets/images/logo.png', height: isPhone ? 30 : 40,
-                errorBuilder: (_, __, ___) => Icon(Icons.tv, color: AppColors.celeste, size: isPhone ? 28 : 36)),
+              AnimatedRemote(width: isPhone ? 18 : 24, height: isPhone ? 36 : 48),
               SizedBox(width: isPhone ? 8 : 12),
               Text('TODO EN UNO TV',
                 style: TextStyle(color: Colors.white, fontSize: isPhone ? 14 : 20,
                   fontWeight: FontWeight.bold, letterSpacing: 1.5)),
               const Spacer(),
-              _TopButton(focusNode: _focusNodes[4], icon: Icons.info_outline, onTap: _showInfo),
+              _TopButton(focusNode: _focusNodes[5], icon: Icons.info_outline, onTap: _showInfo),
             ]),
           ),
           const Divider(color: Colors.white10, height: 1),
@@ -175,25 +214,22 @@ class _HubScreenState extends State<HubScreen> {
     ),
   );
 
-  // Teléfono en landscape: grid 2×2
-  Widget _phoneGrid(BuildContext context) => Padding(
+  // Teléfono: grid 2×N scrollable
+  Widget _phoneGrid(BuildContext context) => GridView.count(
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-    child: GridView.count(
-      crossAxisCount: 2,
-      childAspectRatio: 2.4,
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      shrinkWrap: true,
-      children: List.generate(_cards.length, (i) {
-        final c = _cards[i];
-        return _HeroCard(
-          focusNode: _focusNodes[i], isFocused: _focused == i,
-          icon: c.$1, title: c.$2, subtitle: c.$3, color: c.$4,
-          compact: true,
-          onTap: () => _open(i),
-        );
-      }),
-    ),
+    crossAxisCount: 2,
+    childAspectRatio: 2.4,
+    crossAxisSpacing: 12,
+    mainAxisSpacing: 12,
+    children: List.generate(_cards.length, (i) {
+      final c = _cards[i];
+      return _HeroCard(
+        focusNode: _focusNodes[i], isFocused: _focused == i,
+        icon: c.$1, title: c.$2, subtitle: c.$3, color: c.$4,
+        compact: true,
+        onTap: () => _open(i),
+      );
+    }),
   );
 }
 

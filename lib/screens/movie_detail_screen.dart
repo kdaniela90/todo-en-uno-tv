@@ -93,6 +93,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
           Expanded(child: _loading
             ? const Center(child: CircularProgressIndicator(color: AppColors.celeste))
             : SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
                 padding: EdgeInsets.all(isPhone ? 14 : 24),
                 child: isPhone
                   ? _mobileLayout(context)
@@ -333,6 +334,7 @@ class _BackdropRow extends StatelessWidget {
     SizedBox(height: 110,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
         itemCount: paths.length,
         separatorBuilder: (_, __) => const SizedBox(width: 10),
         itemBuilder: (_, i) => ClipRRect(

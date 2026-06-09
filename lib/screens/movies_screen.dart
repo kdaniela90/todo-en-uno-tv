@@ -4,6 +4,7 @@ import '../models/category.dart';
 import '../models/movie.dart';
 import '../services/xtream_service.dart';
 import '../services/history_service.dart';
+import '../services/parental_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
 import 'live_screen.dart' show sectionAppBar, CatTile;
@@ -24,8 +25,8 @@ class _MoviesScreenState extends State<MoviesScreen> {
   final _movieFocusNodes = <FocusNode>[];
 
   static final _virtualCats = [
-    Category(id: HistoryService.recentCatId, name: '🕐 Recientes'),
-    Category(id: HistoryService.favCatId,    name: '❤️ Favoritos'),
+    Category(id: HistoryService.recentCatId, name: 'Recientes'),
+    Category(id: HistoryService.favCatId,    name: 'Favoritos'),
   ];
 
   @override void initState() { super.initState(); _loadCategories(); }
@@ -35,9 +36,15 @@ class _MoviesScreenState extends State<MoviesScreen> {
   }
 
   Future<void> _loadCategories() async {
-    final cats = await widget.service.getVodCategories();
+    final results = await Future.wait([
+      widget.service.getVodCategories(),
+      ParentalService.getBlocked('movies'),
+    ]);
     if (!mounted) return;
-    final all = [..._virtualCats, ...cats];
+    final cats    = results[0] as List<Category>;
+    final blocked = results[1] as Set<String>;
+    final visible = cats.where((c) => !blocked.contains(c.id)).toList();
+    final all = [..._virtualCats, ...visible];
     _catFocusNodes.addAll(List.generate(all.length, (_) => FocusNode()));
     setState(() { _categories = all; _loadingCats = false; });
     if (all.isNotEmpty) _selectCategory(all[0], 0);
@@ -172,13 +179,6 @@ class _MovieCardState extends State<_MovieCard> {
           ])),
       ),
     ),
-    // Botón favorito sobre la tarjeta
-    Positioned(top: 4, right: 4,
-      child: GestureDetector(onTap: _toggleFav,
-        child: Container(padding: const EdgeInsets.all(3),
-          decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(20)),
-          child: Icon(_isFav ? Icons.favorite : Icons.favorite_border,
-            color: _isFav ? Colors.red : Colors.white60, size: 14)))),
   ]);
   Widget _ph() => Container(color: AppColors.card, child: const Icon(Icons.movie, color: AppColors.azul, size: 28));
 }
