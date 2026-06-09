@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/movie.dart';
 import '../services/xtream_service.dart';
+import '../services/history_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
 import 'player_screen.dart';
@@ -18,7 +18,6 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   Map<String, dynamic>? _info;
   bool _loading = true;
   bool _isFavorite = false;
-  static const _favKey = 'fav_movies';
 
   @override
   void initState() { super.initState(); _loadData(); }
@@ -26,28 +25,22 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   Future<void> _loadData() async {
     final results = await Future.wait([
       widget.service.getVodInfo(widget.movie.id),
-      _loadFavorite(),
+      HistoryService.isFavorite(HistoryService.movies, widget.movie.id),
     ]);
     if (!mounted) return;
     setState(() {
       _info = results[0] as Map<String, dynamic>?;
+      _isFavorite = results[1] as bool;
       _loading = false;
     });
   }
 
-  Future<void> _loadFavorite() async {
-    final prefs = await SharedPreferences.getInstance();
-    final favs = prefs.getStringList(_favKey) ?? [];
-    if (mounted) setState(() => _isFavorite = favs.contains(widget.movie.id));
-  }
-
   Future<void> _toggleFavorite() async {
-    final prefs = await SharedPreferences.getInstance();
-    final favs = prefs.getStringList(_favKey) ?? [];
-    if (_isFavorite) { favs.remove(widget.movie.id); }
-    else { favs.add(widget.movie.id); }
-    await prefs.setStringList(_favKey, favs);
-    setState(() => _isFavorite = !_isFavorite);
+    final newState = await HistoryService.toggleFavorite(
+      HistoryService.movies, widget.movie.id,
+      {'id': widget.movie.id, 'name': widget.movie.name,
+       'icon': widget.movie.streamIcon, 'ext': widget.movie.containerExtension});
+    if (mounted) setState(() => _isFavorite = newState);
   }
 
   // Helpers para extraer info
@@ -164,9 +157,15 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     ],
   );
 
-  void _play() => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerScreen(
-    title: widget.movie.name,
-    streamUrl: widget.service.vodStreamUrl(widget.movie.id, widget.movie.containerExtension))));
+  void _play() {
+    HistoryService.addRecent(HistoryService.movies, {
+      'id': widget.movie.id, 'name': widget.movie.name,
+      'icon': widget.movie.streamIcon, 'ext': widget.movie.containerExtension,
+    });
+    Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerScreen(
+      title: widget.movie.name,
+      streamUrl: widget.service.vodStreamUrl(widget.movie.id, widget.movie.containerExtension))));
+  }
 }
 
 // ─── AppBar con favorito ──────────────────────────────────────────────────────
