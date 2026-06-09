@@ -193,7 +193,8 @@ p{color:#5a7a9b;font-size:.9rem;line-height:1.6}
   // ── Build ────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final wide = MediaQuery.of(context).size.width > 600;
+    final size = MediaQuery.of(context).size;
+    final isTwoCol = size.width > 700;
     final keyboardH = MediaQuery.of(context).viewInsets.bottom;
 
     return Scaffold(
@@ -202,104 +203,195 @@ p{color:#5a7a9b;font-size:.9rem;line-height:1.6}
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: EdgeInsets.only(
-                left: 32, right: 32, top: 32,
-                bottom: keyboardH + 40),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: wide ? 400.0 : double.infinity),
-                child: Form(
-                  key: _formKey,
-                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    AnimatedRemote(width: wide ? 72 : 54, height: wide ? 144 : 108),
-                    const SizedBox(height: 20),
-                    const Text('TODO EN UNO TV',
-                      style: TextStyle(color: Colors.white, fontSize: 22,
-                        fontWeight: FontWeight.bold, letterSpacing: 2)),
-                    const SizedBox(height: 8),
-                    const Text('Inicia sesión con tus credenciales',
-                      style: TextStyle(color: Colors.white70, fontSize: 14)),
-                    const SizedBox(height: 32),
-
-                    _field(ctrl: _userCtrl, focus: _userFocus, next: _passFocus,
-                      label: 'Usuario', icon: Icons.person_rounded,
-                      validator: (v) => (v?.isEmpty ?? true) ? 'Ingresa tu usuario' : null),
-                    const SizedBox(height: 14),
-                    _field(ctrl: _passCtrl, focus: _passFocus,
-                      label: 'Contraseña', icon: Icons.lock_rounded, obscure: _obscure,
-                      suffix: IconButton(
-                        icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off,
-                          color: Colors.white54),
-                        onPressed: () => setState(() => _obscure = !_obscure)),
-                      onSubmit: (_) => _login(),
-                      validator: (v) => (v?.isEmpty ?? true) ? 'Ingresa tu contraseña' : null),
-
-                    if (_error != null) ...[
-                      const SizedBox(height: 14),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.red.withOpacity(0.5))),
-                        child: Row(children: [
-                          const Icon(Icons.error_outline, color: Colors.red, size: 18),
-                          const SizedBox(width: 8),
-                          Expanded(child: Text(_error!,
-                            style: const TextStyle(color: Colors.red, fontSize: 13))),
-                        ]),
-                      ),
-                    ],
-                    const SizedBox(height: 24),
-
-                    // Botón principal
-                    SizedBox(width: double.infinity, height: 54,
-                      child: ElevatedButton(
-                        onPressed: _loading ? null : _login,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.celeste.withOpacity(0.85),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14))),
-                        child: _loading
-                          ? const SizedBox(width: 24, height: 24,
-                              child: CircularProgressIndicator(
-                                color: Colors.white, strokeWidth: 2.5))
-                          : const Text('INICIAR SESIÓN',
-                              style: TextStyle(fontSize: 16,
-                                fontWeight: FontWeight.bold, letterSpacing: 1.5)),
-                      )),
-
-                    // Botón QR
-                    const SizedBox(height: 12),
-                    SizedBox(width: double.infinity, height: 48,
-                      child: OutlinedButton.icon(
-                        onPressed: _loading ? null : _openQrLogin,
-                        icon: const Icon(Icons.qr_code_scanner, size: 18),
-                        label: const Text('Ingresar desde el móvil',
-                          style: TextStyle(fontSize: 14, letterSpacing: 0.5)),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.celeste,
-                          side: BorderSide(color: AppColors.celeste.withOpacity(0.5)),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14))),
-                      )),
-
-                    const SizedBox(height: 20),
-                    const Text('© 2026 Todo en Uno TV',
-                      style: TextStyle(color: Colors.white38, fontSize: 12)),
-                    const SizedBox(height: 16),
-                  ]),
-                ),
-              ),
-            ),
-          ),
+          child: isTwoCol
+              ? _twoColumnLayout(context)
+              : _singleColumnLayout(context, keyboardH),
         ),
       ),
     );
   }
+
+  // ── Dos columnas: TV / tablet landscape ─────────────────────────────────
+  Widget _twoColumnLayout(BuildContext context) => Row(
+    children: [
+      // ── Columna izquierda: logo ──────────────────────────────────────────
+      Expanded(
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                AppColors.background,
+                const Color(0xFF0A1128),
+              ],
+            ),
+            border: const Border(
+              right: BorderSide(color: Colors.white10, width: 1),
+            ),
+          ),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedRemote(width: 80, height: 160),
+                const SizedBox(height: 28),
+                // Wordmark estilo brandkit
+                ShaderMask(
+                  shaderCallback: (bounds) => const LinearGradient(
+                    colors: [AppColors.celeste, AppColors.azul],
+                  ).createShader(bounds),
+                  child: const Text('TODO',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 42,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 3,
+                      height: 1.0,
+                    )),
+                ),
+                const Text('EN UNO',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 42,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 3,
+                    height: 1.05,
+                  )),
+                const Text('TV',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 42,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 6,
+                    height: 1.05,
+                  )),
+                const SizedBox(height: 16),
+                const Text('Tu entretenimiento en un solo lugar',
+                  style: TextStyle(
+                    color: Colors.white38,
+                    fontSize: 13,
+                    letterSpacing: 0.5,
+                  )),
+              ],
+            ),
+          ),
+        ),
+      ),
+
+      // ── Columna derecha: formulario ──────────────────────────────────────
+      Expanded(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 32),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 380),
+              child: _formContent(context),
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
+
+  // ── Una columna: teléfono ────────────────────────────────────────────────
+  Widget _singleColumnLayout(BuildContext context, double keyboardH) => Center(
+    child: SingleChildScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: EdgeInsets.fromLTRB(32, 32, 32, keyboardH + 40),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: Column(children: [
+          AnimatedRemote(width: 54, height: 108),
+          const SizedBox(height: 16),
+          const Text('TODO EN UNO TV',
+            style: TextStyle(color: Colors.white, fontSize: 20,
+              fontWeight: FontWeight.bold, letterSpacing: 2)),
+          const SizedBox(height: 24),
+          _formContent(context),
+        ]),
+      ),
+    ),
+  );
+
+  // ── Contenido del formulario (compartido) ────────────────────────────────
+  Widget _formContent(BuildContext context) => Form(
+    key: _formKey,
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('Iniciar sesión',
+        style: TextStyle(color: Colors.white,
+          fontSize: 24, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 6),
+      const Text('Ingresa tus credenciales para continuar',
+        style: TextStyle(color: Colors.white54, fontSize: 14)),
+      const SizedBox(height: 28),
+
+      _field(ctrl: _userCtrl, focus: _userFocus, next: _passFocus,
+        label: 'Usuario', icon: Icons.person_rounded,
+        validator: (v) => (v?.isEmpty ?? true) ? 'Ingresa tu usuario' : null),
+      const SizedBox(height: 14),
+      _field(ctrl: _passCtrl, focus: _passFocus,
+        label: 'Contraseña', icon: Icons.lock_rounded, obscure: _obscure,
+        suffix: IconButton(
+          icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off,
+            color: Colors.white54),
+          onPressed: () => setState(() => _obscure = !_obscure)),
+        onSubmit: (_) => _login(),
+        validator: (v) => (v?.isEmpty ?? true) ? 'Ingresa tu contraseña' : null),
+
+      if (_error != null) ...[
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.red.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.red.withOpacity(0.5))),
+          child: Row(children: [
+            const Icon(Icons.error_outline, color: Colors.red, size: 18),
+            const SizedBox(width: 8),
+            Expanded(child: Text(_error!,
+              style: const TextStyle(color: Colors.red, fontSize: 13))),
+          ]),
+        ),
+      ],
+      const SizedBox(height: 24),
+
+      SizedBox(width: double.infinity, height: 54,
+        child: ElevatedButton(
+          onPressed: _loading ? null : _login,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.celeste.withOpacity(0.85),
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14))),
+          child: _loading
+            ? const SizedBox(width: 24, height: 24,
+                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+            : const Text('INICIAR SESIÓN',
+                style: TextStyle(fontSize: 16,
+                  fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+        )),
+
+      const SizedBox(height: 12),
+      SizedBox(width: double.infinity, height: 48,
+        child: OutlinedButton.icon(
+          onPressed: _loading ? null : _openQrLogin,
+          icon: const Icon(Icons.qr_code_scanner, size: 18),
+          label: const Text('Ingresar desde el móvil',
+            style: TextStyle(fontSize: 14, letterSpacing: 0.5)),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.celeste,
+            side: BorderSide(color: AppColors.celeste.withOpacity(0.5)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14))),
+        )),
+
+      const SizedBox(height: 24),
+      const Center(child: Text('© 2026 Todo en Uno TV',
+        style: TextStyle(color: Colors.white24, fontSize: 12))),
+    ]),
+  );
 
   Widget _field({
     required TextEditingController ctrl,
