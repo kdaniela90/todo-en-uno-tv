@@ -37,17 +37,31 @@ class EpgEntry {
   }
 
   factory EpgEntry.fromJson(Map<String, dynamic> j) {
-    final startTs = int.tryParse(j['start_timestamp']?.toString() ?? '') ?? 0;
-    final stopTs  = int.tryParse(j['stop_timestamp']?.toString()  ?? '') ?? 0;
+    final startTs = int.tryParse(j['start_timestamp']?.toString() ?? '');
+    final stopTs  = int.tryParse(j['stop_timestamp']?.toString()  ?? '');
+
+    final start = (startTs != null && startTs > 0)
+        ? DateTime.fromMillisecondsSinceEpoch(startTs * 1000)
+        : _parseDateTime(j['start']?.toString() ?? '')
+          ?? DateTime.now();
+
+    final end = (stopTs != null && stopTs > 0)
+        ? DateTime.fromMillisecondsSinceEpoch(stopTs * 1000)
+        : _parseDateTime(j['end']?.toString() ?? j['stop']?.toString() ?? '')
+          ?? DateTime.now().add(const Duration(hours: 1));
+
     return EpgEntry(
       title:       _decode(j['title']?.toString() ?? ''),
       description: _decode(j['description']?.toString() ?? ''),
-      start: startTs > 0
-        ? DateTime.fromMillisecondsSinceEpoch(startTs * 1000)
-        : DateTime.now(),
-      end: stopTs > 0
-        ? DateTime.fromMillisecondsSinceEpoch(stopTs * 1000)
-        : DateTime.now().add(const Duration(hours: 1)),
+      start: start,
+      end: end,
     );
+  }
+
+  /// Parsea "2023-05-01 20:00:00" o "2023-05-01T20:00:00"
+  static DateTime? _parseDateTime(String s) {
+    if (s.isEmpty) return null;
+    try { return DateTime.parse(s.contains('T') ? s : s.replaceFirst(' ', 'T')); }
+    catch (_) { return null; }
   }
 }

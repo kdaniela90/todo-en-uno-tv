@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/animated_remote.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -53,7 +54,7 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.mainGradient),
+        color: AppColors.background,
         child: Center(
           child: FadeTransition(
             opacity: _fadeAnim,
@@ -62,15 +63,7 @@ class _SplashScreenState extends State<SplashScreen>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Image.asset(
-                    'assets/images/logo.png',
-                    width: 200,
-                    errorBuilder: (_, __, ___) => const Icon(
-                      Icons.tv,
-                      size: 100,
-                      color: Colors.white,
-                    ),
-                  ),
+                  AnimatedRemote(width: 64, height: 128),
                   const SizedBox(height: 24),
                   const Text(
                     'TODO EN UNO TV',

@@ -98,7 +98,7 @@ class _SearchScreenState extends State<SearchScreen> {
               Expanded(child: TextField(
                 controller: _ctrl,
                 focusNode: _fieldFocus,
-                autofocus: true,
+                autofocus: false,
                 style: TextStyle(color: Colors.white, fontSize: R.fs(context, 15)),
                 decoration: InputDecoration(
                   hintText: _mode == _SearchMode.title
@@ -133,9 +133,9 @@ class _SearchScreenState extends State<SearchScreen> {
               color: AppColors.celeste,
               onTap: () {
                 if (_mode != _SearchMode.title) {
+                  FocusScope.of(context).unfocus();
                   setState(() { _mode = _SearchMode.title; _searched = false; });
                   _ctrl.clear();
-                  _fieldFocus.requestFocus();
                 }
               },
             ),
@@ -147,9 +147,9 @@ class _SearchScreenState extends State<SearchScreen> {
               color: const Color(0xFFE86C2A),
               onTap: () {
                 if (_mode != _SearchMode.actor) {
+                  FocusScope.of(context).unfocus();
                   setState(() { _mode = _SearchMode.actor; _searched = false; });
                   _ctrl.clear();
-                  _fieldFocus.requestFocus();
                 }
               },
             ),

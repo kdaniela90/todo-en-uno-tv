@@ -7,6 +7,7 @@ import 'series_screen.dart';
 import 'search_screen.dart';
 import '../services/xtream_service.dart';
 import '../services/parental_service.dart';
+import '../services/storage_service.dart';
 import '../widgets/animated_remote.dart';
 import 'parental_screen.dart';
 
@@ -19,7 +20,7 @@ class HubScreen extends StatefulWidget {
 class _HubScreenState extends State<HubScreen> {
   late XtreamService _service;
   int _focused = 0;
-  final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
+  final List<FocusNode> _focusNodes = List.generate(7, (_) => FocusNode());
 
   String get _expDate {
     final raw = widget.credentials['exp_date'] ?? '';
@@ -98,13 +99,40 @@ class _HubScreenState extends State<HubScreen> {
       builder: (_) => ParentalScreen(service: _service)));
   }
 
+  Future<void> _logout() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF0D1020),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Cerrar sesión',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: const Text(
+          '¿Deseas cerrar sesión y cambiar de playlist?',
+          style: TextStyle(color: Colors.white60)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.white38))),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Cerrar sesión',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    await StorageService.clearCredentials();
+    if (!mounted) return;
+    Navigator.pushReplacementNamed(context, '/login');
+  }
+
   void _showInfo() {
-    showDialog(context: context, builder: (_) => AlertDialog(
+    showDialog(context: context, builder: (ctx) => AlertDialog(
       backgroundColor: const Color(0xFF0D1020),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        Image.asset('assets/images/logo.png', width: 72,
-          errorBuilder: (_, __, ___) => const Icon(Icons.tv, color: AppColors.celeste, size: 48)),
+        AnimatedRemote(width: 32, height: 64),
         const SizedBox(height: 14),
         const Text('TODO EN UNO TV',
           style: TextStyle(color: Colors.white, fontSize: 16,
@@ -114,11 +142,46 @@ class _HubScreenState extends State<HubScreen> {
         const SizedBox(height: 10),
         _infoRow(Icons.person, 'Usuario', widget.credentials['username'] ?? ''),
         const SizedBox(height: 10),
+        _infoRow(Icons.dns_rounded, 'Servidor', widget.credentials['server'] ?? ''),
+        const SizedBox(height: 10),
         _infoRow(Icons.language, 'Sitio web', 'todoenunotv.com'),
         const SizedBox(height: 18),
+        const Divider(color: Colors.white10),
+        const SizedBox(height: 10),
+
+        // ── Botón de Refresh ─────────────────────────────────────────
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Actualizar contenido'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.celeste,
+              side: BorderSide(color: AppColors.celeste.withOpacity(0.5)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(vertical: 12)),
+            onPressed: () {
+              XtreamService.clearEpgCache();
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Row(children: [
+                    Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
+                    SizedBox(width: 10),
+                    Text('Caché limpiado. El contenido se cargará nuevo.'),
+                  ]),
+                  backgroundColor: AppColors.celeste.withOpacity(0.85),
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  duration: const Duration(seconds: 3),
+                ));
+            },
+          ),
+        ),
+        const SizedBox(height: 10),
         TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cerrar', style: TextStyle(color: AppColors.celeste))),
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Cerrar', style: TextStyle(color: Colors.white38))),
       ]),
     ));
   }
@@ -161,6 +224,8 @@ class _HubScreenState extends State<HubScreen> {
                   fontWeight: FontWeight.bold, letterSpacing: 1.5)),
               const Spacer(),
               _TopButton(focusNode: _focusNodes[5], icon: Icons.info_outline, onTap: _showInfo),
+              const SizedBox(width: 6),
+              _TopButton(focusNode: _focusNodes[6], icon: Icons.logout, onTap: _logout),
             ]),
           ),
           const Divider(color: Colors.white10, height: 1),

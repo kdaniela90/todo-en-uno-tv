@@ -266,102 +266,114 @@ class _ChannelTileState extends State<_ChannelTile> {
     final sz = isPhone ? 36.0 : 48.0;
     final cur = _current;
 
-    return InkWell(
-      focusNode: widget.focusNode, autofocus: widget.autofocus,
-      focusColor: Colors.transparent, onTap: _play,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
-        padding: EdgeInsets.symmetric(
-          horizontal: isPhone ? 8 : 12,
-          vertical: isPhone ? 7 : 9),
-        decoration: BoxDecoration(
-          color: _focused ? Colors.white12 : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: _focused ? AppColors.celeste : Colors.transparent, width: 2),
-        ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // ── Fila principal: logo + nombre + badges ─────────────────────
-          Row(children: [
-            ClipRRect(borderRadius: BorderRadius.circular(6),
-              child: widget.channel.streamIcon.isNotEmpty
-                ? CachedNetworkImage(
-                    imageUrl: widget.channel.streamIcon,
-                    width: sz, height: sz * 0.75,
-                    fit: BoxFit.contain,
-                    placeholder: (_, __) => _icon(sz),
-                    errorWidget: (_, __, ___) => _icon(sz))
-                : _icon(sz)),
-            SizedBox(width: isPhone ? 8 : 12),
-            Expanded(child: Text(widget.channel.name,
-              style: TextStyle(
-                color: _focused ? Colors.white : AppColors.textPrimary,
-                fontSize: R.fs(context, 14),
-                fontWeight: _focused ? FontWeight.w600 : FontWeight.normal),
-              maxLines: 1, overflow: TextOverflow.ellipsis)),
-            if (!isPhone)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(5),
-                  border: Border.all(color: Colors.red.withOpacity(0.5))),
-                child: const Text('● VIVO',
-                  style: TextStyle(color: Colors.red, fontSize: 9, fontWeight: FontWeight.bold))),
-            const SizedBox(width: 4),
-            GestureDetector(onTap: _toggleFav,
-              child: Padding(padding: const EdgeInsets.all(6),
-                child: Icon(
-                  _isFav ? Icons.favorite : Icons.favorite_border,
-                  color: _isFav ? Colors.red : Colors.white30, size: 18))),
-          ]),
-
-          // ── EPG: programa actual + barra de progreso ───────────────────
-          if (_epgLoaded && cur != null) ...[
-            const SizedBox(height: 5),
-            Padding(
-              padding: EdgeInsets.only(left: sz + (isPhone ? 8 : 12)),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
+      decoration: BoxDecoration(
+        color: _focused ? Colors.white12 : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: _focused ? AppColors.celeste : Colors.transparent, width: 2),
+      ),
+      // ── Row externo: canal (tappable) + corazón (sibling, no nested) ──
+      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        Expanded(
+          child: InkWell(
+            focusNode: widget.focusNode, autofocus: widget.autofocus,
+            focusColor: Colors.transparent, onTap: _play,
+            borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: isPhone ? 8 : 12,
+                vertical: isPhone ? 7 : 9),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                // ── Logo + nombre + badge ─────────────────────────────
                 Row(children: [
-                  Expanded(child: Text(cur.title,
+                  ClipRRect(borderRadius: BorderRadius.circular(6),
+                    child: widget.channel.streamIcon.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: widget.channel.streamIcon,
+                          width: sz, height: sz * 0.75,
+                          fit: BoxFit.contain,
+                          placeholder: (_, __) => _icon(sz),
+                          errorWidget: (_, __, ___) => _icon(sz))
+                      : _icon(sz)),
+                  SizedBox(width: isPhone ? 8 : 12),
+                  Expanded(child: Text(widget.channel.name,
                     style: TextStyle(
-                      color: _focused ? AppColors.celeste : Colors.white54,
-                      fontSize: R.fs(context, 11),
-                      fontWeight: FontWeight.w500),
+                      color: _focused ? Colors.white : AppColors.textPrimary,
+                      fontSize: R.fs(context, 14),
+                      fontWeight: _focused ? FontWeight.w600 : FontWeight.normal),
                     maxLines: 1, overflow: TextOverflow.ellipsis)),
-                  const SizedBox(width: 4),
-                  Text(cur.timeRange,
-                    style: const TextStyle(color: Colors.white30, fontSize: 10)),
+                  if (!isPhone)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(color: Colors.red.withOpacity(0.5))),
+                      child: const Text('● VIVO',
+                        style: TextStyle(color: Colors.red, fontSize: 9, fontWeight: FontWeight.bold))),
                 ]),
-                const SizedBox(height: 3),
-                // Barra de progreso
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: LinearProgressIndicator(
-                    value: cur.progress,
-                    minHeight: 3,
-                    backgroundColor: Colors.white12,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      _focused ? AppColors.celeste : AppColors.celeste.withOpacity(0.5)),
+
+                // ── EPG: programa actual + barra ──────────────────────
+                if (_epgLoaded && cur != null) ...[
+                  const SizedBox(height: 5),
+                  Padding(
+                    padding: EdgeInsets.only(left: sz + (isPhone ? 8 : 12)),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        Expanded(child: Text(cur.title,
+                          style: TextStyle(
+                            color: _focused ? AppColors.celeste : Colors.white54,
+                            fontSize: R.fs(context, 11),
+                            fontWeight: FontWeight.w500),
+                          maxLines: 1, overflow: TextOverflow.ellipsis)),
+                        const SizedBox(width: 4),
+                        Text(cur.timeRange,
+                          style: const TextStyle(color: Colors.white30, fontSize: 10)),
+                      ]),
+                      const SizedBox(height: 3),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(2),
+                        child: LinearProgressIndicator(
+                          value: cur.progress,
+                          minHeight: 3,
+                          backgroundColor: Colors.white12,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            _focused ? AppColors.celeste : AppColors.celeste.withOpacity(0.5)),
+                        ),
+                      ),
+                    ]),
                   ),
-                ),
+                ] else if (!_epgLoaded) ...[
+                  Padding(
+                    padding: EdgeInsets.only(left: sz + (isPhone ? 8 : 12), top: 4),
+                    child: const SizedBox(
+                      width: 80, height: 3,
+                      child: LinearProgressIndicator(
+                        backgroundColor: Colors.white10,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white12))),
+                  ),
+                ],
               ]),
             ),
-          ] else if (!_epgLoaded) ...[
-            // Placeholder mientras carga
-            Padding(
-              padding: EdgeInsets.only(
-                left: sz + (isPhone ? 8 : 12), top: 4),
-              child: const SizedBox(
-                width: 80, height: 3,
-                child: LinearProgressIndicator(
-                  backgroundColor: Colors.white10,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white12))),
-            ),
-          ],
-        ]),
-      ),
+          ),
+        ),
+
+        // ── Corazón: FUERA del InkWell para evitar conflicto de gestos ──
+        GestureDetector(
+          onTap: _toggleFav,
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: isPhone ? 10 : 14,
+              vertical: isPhone ? 10 : 14),
+            child: Icon(
+              _isFav ? Icons.favorite : Icons.favorite_border,
+              color: _isFav ? Colors.red : Colors.white30,
+              size: 20)),
+        ),
+      ]),
     );
   }
 
