@@ -142,8 +142,6 @@ class _HubScreenState extends State<HubScreen> {
         const SizedBox(height: 10),
         _infoRow(Icons.person, 'Usuario', widget.credentials['username'] ?? ''),
         const SizedBox(height: 10),
-        _infoRow(Icons.dns_rounded, 'Servidor', widget.credentials['server'] ?? ''),
-        const SizedBox(height: 10),
         _infoRow(Icons.language, 'Sitio web', 'todoenunotv.com'),
         const SizedBox(height: 18),
         const Divider(color: Colors.white10),
