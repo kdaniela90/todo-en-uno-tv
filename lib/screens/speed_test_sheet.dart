@@ -54,35 +54,28 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
     _animCtrl.reset();
     setState(() { _phase = _Phase.pingTest; _latencyMs = -1; _speedMbps = 0; });
 
-    // ── 1. Ping al servidor IPTV ───────────────────────────────────────
-    try {
-      final sw = Stopwatch()..start();
-      await http
-          .head(Uri.parse(widget.serverUrl))
-          .timeout(const Duration(seconds: 6));
-      sw.stop();
-      if (mounted) setState(() => _latencyMs = sw.elapsedMilliseconds);
-    } catch (_) {
-      if (mounted) setState(() => _latencyMs = -1);
-    }
+    // ── 1. Ping — prueba el servidor IPTV, con fallback a Cloudflare ───
+    _latencyMs = await _measurePing(widget.serverUrl)
+        ?? await _measurePing('https://1.1.1.1')
+        ?? -1;
+    if (mounted) setState(() {});
 
     if (!mounted) return;
     setState(() => _phase = _Phase.downloadTest);
 
-    // ── 2. Velocidad de descarga (5 MB desde Cloudflare CDN) ──────────
-    // Si falla, intentamos con 1 MB como fallback
-    final result = await _downloadSpeedMbps(
-        'https://speed.cloudflare.com/__down?bytes=5000000', 5000000)
-      ?? await _downloadSpeedMbps(
-          'https://proof.ovh.net/files/1Mb.dat', 1000000)
-      ?? -1.0;
+    // ── 2. Velocidad de descarga — streaming real de bytes ─────────────
+    // 3 URLs en cascada; la primera que responda gana
+    final result =
+        await _downloadSpeedMbps('https://speed.cloudflare.com/__down?bytes=5000000')
+     ?? await _downloadSpeedMbps('https://proof.ovh.net/files/1Mb.dat')
+     ?? await _downloadSpeedMbps('https://httpbin.org/bytes/1000000')
+     ?? -1.0;
 
     if (!mounted) return;
 
     _speedMbps   = result;
     _gaugeTarget = result < 0 ? 0 : (result / _maxScale).clamp(0.0, 1.0);
 
-    // Animate gauge
     _gaugeAnim = Tween<double>(begin: 0, end: _gaugeTarget).animate(
         CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut));
     _animCtrl.forward();
@@ -90,17 +83,47 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
     setState(() => _phase = result < 0 ? _Phase.error : _Phase.done);
   }
 
-  Future<double?> _downloadSpeedMbps(String url, int expectedBytes) async {
+  /// Mide el tiempo de respuesta (HEAD) a una URL. Devuelve null si falla.
+  Future<int?> _measurePing(String url) async {
     try {
+      final uri = Uri.tryParse(url);
+      if (uri == null) return null;
       final sw = Stopwatch()..start();
-      final res = await http.get(Uri.parse(url))
-          .timeout(const Duration(seconds: 25));
+      await http.head(uri).timeout(const Duration(seconds: 5));
       sw.stop();
-      final bytes   = res.bodyBytes.length;
-      final seconds = sw.elapsedMilliseconds / 1000;
-      if (seconds < 0.1 || bytes < 1000) return null;
-      return (bytes * 8) / (seconds * 1000000); // Mbps
+      return sw.elapsedMilliseconds;
     } catch (_) { return null; }
+  }
+
+  /// Descarga en streaming y mide Mbps reales. Devuelve null si falla o hay
+  /// muy pocos datos.
+  Future<double?> _downloadSpeedMbps(String url) async {
+    final client = http.Client();
+    try {
+      final uri = Uri.tryParse(url);
+      if (uri == null) return null;
+
+      final sw       = Stopwatch()..start();
+      final response = await client
+          .send(http.Request('GET', uri))
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) return null;
+
+      // Cuenta bytes a medida que llegan — más preciso que bodyBytes
+      final totalBytes = await response.stream
+          .fold<int>(0, (acc, chunk) => acc + chunk.length)
+          .timeout(const Duration(seconds: 30));
+
+      sw.stop();
+      final seconds = sw.elapsedMilliseconds / 1000.0;
+      if (seconds < 0.1 || totalBytes < 50000) return null;
+      return (totalBytes * 8) / (seconds * 1000000); // Mbps
+    } catch (_) {
+      return null;
+    } finally {
+      client.close();
+    }
   }
 
   // ── Rating ──────────────────────────────────────────────────────────────

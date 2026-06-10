@@ -29,11 +29,15 @@ class _SeriesScreenState extends State<SeriesScreen> {
   bool _showSearch = false;
   String _searchQuery = '';
   final _searchCtrl = TextEditingController();
+  List<Series> _allSeries = [];
+  bool _loadingAll = false;
 
-  List<Series> get _visibleSeries => _searchQuery.isEmpty
-      ? _series
-      : _series.where((s) =>
-          s.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+  List<Series> get _visibleSeries {
+    if (_searchQuery.isEmpty) return _series;
+    final pool = _allSeries.isNotEmpty ? _allSeries : _series;
+    return pool.where((s) =>
+        s.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+  }
 
   static final _virtualCats = [
     Category(id: HistoryService.recentCatId, name: 'Recientes'),
@@ -90,6 +94,14 @@ class _SeriesScreenState extends State<SeriesScreen> {
     id: d['id'] ?? '', name: d['name'] ?? '',
     cover: d['icon'] ?? '', categoryId: '');
 
+  Future<void> _loadAllSeries() async {
+    if (_allSeries.isNotEmpty || _loadingAll) return;
+    setState(() => _loadingAll = true);
+    final all = await widget.service.getSeries();
+    if (!mounted) return;
+    setState(() { _allSeries = all; _loadingAll = false; });
+  }
+
   @override
   Widget build(BuildContext context) {
     final cols = R.gridCols(context);
@@ -106,10 +118,14 @@ class _SeriesScreenState extends State<SeriesScreen> {
                 key: ValueKey(_showSearch),
                 color: _showSearch ? AppColors.morado : Colors.white70, size: 22)),
             tooltip: 'Buscar serie',
-            onPressed: () => setState(() {
-              _showSearch = !_showSearch;
-              if (!_showSearch) { _searchCtrl.clear(); _searchQuery = ''; }
-            }),
+            onPressed: () {
+              final opening = !_showSearch;
+              setState(() {
+                _showSearch = !_showSearch;
+                if (!_showSearch) { _searchCtrl.clear(); _searchQuery = ''; }
+              });
+              if (opening) _loadAllSeries();
+            },
           ),
         ]),
       body: Column(children: [
@@ -138,7 +154,7 @@ class _SeriesScreenState extends State<SeriesScreen> {
                   )),
           ),
           Container(width: 1, color: Colors.white10),
-          Expanded(child: _loadingSeries
+          Expanded(child: (_loadingSeries || (_loadingAll && _searchQuery.isNotEmpty))
             ? const Center(child: CircularProgressIndicator(color: AppColors.morado))
             : _visibleSeries.isEmpty
               ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [

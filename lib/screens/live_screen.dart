@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:video_player/video_player.dart';
 import '../models/category.dart';
 import '../models/channel.dart';
 import '../models/epg_entry.dart';
@@ -32,11 +33,19 @@ class _LiveScreenState extends State<LiveScreen> {
   bool _showSearch = false;
   String _searchQuery = '';
   final _searchCtrl = TextEditingController();
+  List<Channel> _allChannels = [];   // todos los canales de la sección
+  bool _loadingAll = false;
 
-  List<Channel> get _visibleChannels => _searchQuery.isEmpty
-      ? _channels
-      : _channels.where((c) =>
-          c.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+  // ── Panel de previsualización ─────────────────────────────────────────────
+  Channel? _previewChannel;
+  int _previewChannelIdx = 0;
+
+  List<Channel> get _visibleChannels {
+    if (_searchQuery.isEmpty) return _channels;
+    final pool = _allChannels.isNotEmpty ? _allChannels : _channels;
+    return pool.where((c) =>
+        c.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+  }
 
   static final _virtualCats = [
     Category(id: HistoryService.recentCatId, name: 'Recientes'),
@@ -66,9 +75,18 @@ class _LiveScreenState extends State<LiveScreen> {
     if (all.isNotEmpty) _selectCategory(all[0], 0);
   }
 
+  void _onChannelFocused(Channel ch, int idx) {
+    if (_previewChannel?.id != ch.id) {
+      setState(() { _previewChannel = ch; _previewChannelIdx = idx; });
+    }
+  }
+
   Future<void> _selectCategory(Category cat, int index) async {
     _searchCtrl.clear();
-    setState(() { _selectedCatIndex = index; _loadingChannels = true; _channels = []; _searchQuery = ''; });
+    setState(() {
+      _selectedCatIndex = index; _loadingChannels = true;
+      _channels = []; _searchQuery = ''; _previewChannel = null;
+    });
     for (final n in _channelFocusNodes) n.dispose();
     _channelFocusNodes.clear();
 
@@ -89,6 +107,14 @@ class _LiveScreenState extends State<LiveScreen> {
     setState(() { _channels = ch; _loadingChannels = false; });
   }
 
+  Future<void> _loadAllChannels() async {
+    if (_allChannels.isNotEmpty || _loadingAll) return;
+    setState(() => _loadingAll = true);
+    final all = await widget.service.getLiveStreams();
+    if (!mounted) return;
+    setState(() { _allChannels = all; _loadingAll = false; });
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: AppColors.background,
@@ -103,53 +129,73 @@ class _LiveScreenState extends State<LiveScreen> {
           : const SizedBox.shrink(),
       ),
       // ── Contenido principal ─────────────────────────────────────────
-      Expanded(child: Row(children: [
-        SizedBox(width: R.catPanelW(context),
-          child: _loadingCats
+      Expanded(child: Builder(builder: (context) {
+        final isPhone = R.isPhone(context);
+        return Row(children: [
+          // Columna de categorías
+          SizedBox(width: R.catPanelW(context),
+            child: _loadingCats
+              ? const Center(child: CircularProgressIndicator(color: AppColors.celeste))
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: _categories.length,
+                  itemBuilder: (_, i) {
+                    final isVirtual = i < _virtualCats.length;
+                    return CatTile(
+                      name: _categories[i].name,
+                      isSelected: _selectedCatIndex == i,
+                      accentColor: isVirtual ? Colors.amber : AppColors.celeste,
+                      focusNode: _catFocusNodes[i],
+                      autofocus: i == 0,
+                      onSelect: () => _selectCategory(_categories[i], i),
+                    );
+                  })),
+          Container(width: 1, color: Colors.white10),
+          // Columna de canales
+          Expanded(child: (_loadingChannels || (_loadingAll && _searchQuery.isNotEmpty))
             ? const Center(child: CircularProgressIndicator(color: AppColors.celeste))
-            : ListView.builder(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: _categories.length,
-                itemBuilder: (_, i) {
-                  final isVirtual = i < _virtualCats.length;
-                  return CatTile(
-                    name: _categories[i].name,
-                    isSelected: _selectedCatIndex == i,
-                    accentColor: isVirtual ? Colors.amber : AppColors.celeste,
-                    focusNode: _catFocusNodes[i],
-                    autofocus: i == 0,
-                    onSelect: () => _selectCategory(_categories[i], i),
-                  );
-                })),
-        Container(width: 1, color: Colors.white10),
-        Expanded(child: _loadingChannels
-          ? const Center(child: CircularProgressIndicator(color: AppColors.celeste))
-          : _visibleChannels.isEmpty
-            ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Icon(_searchQuery.isNotEmpty ? Icons.search_off : Icons.tv_off,
-                  color: Colors.white24, size: 40),
-                const SizedBox(height: 10),
-                Text(_searchQuery.isNotEmpty
-                  ? 'Sin resultados para "$_searchQuery"'
-                  : (_selectedCatIndex < _virtualCats.length
-                    ? 'Aún no hay nada aquí' : 'Sin canales'),
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-              ]))
-            : ListView.builder(
-                padding: EdgeInsets.symmetric(vertical: 8, horizontal: R.padding(context)),
-                itemCount: _visibleChannels.length,
-                itemBuilder: (_, i) {
-                  final ch = _visibleChannels[i];
-                  return _ChannelTile(
-                    channel: ch, service: widget.service,
-                    channels: _channels,
-                    channelIndex: _channels.indexOf(ch),
-                    focusNode: i < _channelFocusNodes.length ? _channelFocusNodes[i] : FocusNode(),
-                    autofocus: i == 0,
-                    onFavChanged: () => _selectCategory(_categories[_selectedCatIndex], _selectedCatIndex),
-                  );
-                })),
-      ])),
+            : _visibleChannels.isEmpty
+              ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(_searchQuery.isNotEmpty ? Icons.search_off : Icons.tv_off,
+                    color: Colors.white24, size: 40),
+                  const SizedBox(height: 10),
+                  Text(_searchQuery.isNotEmpty
+                    ? 'Sin resultados para "$_searchQuery"'
+                    : (_selectedCatIndex < _virtualCats.length
+                      ? 'Aún no hay nada aquí' : 'Sin canales'),
+                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                ]))
+              : ListView.builder(
+                  padding: EdgeInsets.symmetric(vertical: 8, horizontal: R.padding(context)),
+                  itemCount: _visibleChannels.length,
+                  itemBuilder: (_, i) {
+                    final ch = _visibleChannels[i];
+                    return _ChannelTile(
+                      channel: ch, service: widget.service,
+                      channels: _channels,
+                      channelIndex: _channels.indexOf(ch),
+                      focusNode: i < _channelFocusNodes.length ? _channelFocusNodes[i] : FocusNode(),
+                      autofocus: i == 0,
+                      onFocused: () => _onChannelFocused(ch, i),
+                      onFavChanged: () => _selectCategory(_categories[_selectedCatIndex], _selectedCatIndex),
+                    );
+                  })),
+          // Columna de previsualización + EPG (solo en tablet/TV)
+          if (!isPhone) ...[
+            Container(width: 1, color: Colors.white10),
+            SizedBox(
+              width: 320,
+              child: _PreviewPanel(
+                key: ValueKey(_previewChannel?.id ?? ''),
+                channel: _previewChannel,
+                service: widget.service,
+                channels: _channels,
+                channelIndex: _previewChannelIdx,
+              ),
+            ),
+          ],
+        ]);
+      })),
     ]),
   );
 
@@ -177,10 +223,12 @@ class _LiveScreenState extends State<LiveScreen> {
             color: _showSearch ? AppColors.celeste : Colors.white70, size: 22)),
         tooltip: 'Buscar canal',
         onPressed: () {
+          final opening = !_showSearch;
           setState(() {
             _showSearch = !_showSearch;
             if (!_showSearch) { _searchCtrl.clear(); _searchQuery = ''; }
           });
+          if (opening) _loadAllChannels();
         },
       ),
       // Búsqueda en EPG
@@ -308,10 +356,31 @@ class CatTile extends StatefulWidget {
 }
 class CatTileState extends State<CatTile> {
   bool _focused = false;
+
+  void _onFocusChange() {
+    if (mounted) setState(() => _focused = widget.focusNode.hasFocus);
+  }
+
   @override void initState() {
     super.initState();
-    widget.focusNode.addListener(() { if (mounted) setState(() => _focused = widget.focusNode.hasFocus); });
+    _focused = widget.focusNode.hasFocus;
+    widget.focusNode.addListener(_onFocusChange);
   }
+
+  @override void didUpdateWidget(CatTile old) {
+    super.didUpdateWidget(old);
+    if (old.focusNode != widget.focusNode) {
+      old.focusNode.removeListener(_onFocusChange);
+      widget.focusNode.addListener(_onFocusChange);
+      _focused = widget.focusNode.hasFocus;
+    }
+  }
+
+  @override void dispose() {
+    widget.focusNode.removeListener(_onFocusChange);
+    super.dispose();
+  }
+
   @override Widget build(BuildContext context) {
     final active = widget.isSelected || _focused;
     final isPhone = R.isPhone(context);
@@ -345,10 +414,12 @@ class _ChannelTile extends StatefulWidget {
   final int channelIndex;
   final FocusNode focusNode;
   final bool autofocus;
+  final VoidCallback? onFocused;
   final VoidCallback onFavChanged;
   const _ChannelTile({required this.channel, required this.service,
     required this.channels, required this.channelIndex,
-    required this.focusNode, this.autofocus = false, required this.onFavChanged});
+    required this.focusNode, this.autofocus = false,
+    this.onFocused, required this.onFavChanged});
   @override State<_ChannelTile> createState() => _ChannelTileState();
 }
 class _ChannelTileState extends State<_ChannelTile> {
@@ -360,7 +431,10 @@ class _ChannelTileState extends State<_ChannelTile> {
   @override void initState() {
     super.initState();
     widget.focusNode.addListener(() {
-      if (mounted) setState(() => _focused = widget.focusNode.hasFocus);
+      if (mounted) {
+        setState(() => _focused = widget.focusNode.hasFocus);
+        if (widget.focusNode.hasFocus) widget.onFocused?.call();
+      }
     });
     _loadFav();
     _loadEpg();
@@ -569,6 +643,242 @@ class _ChannelTileState extends State<_ChannelTile> {
   Widget _icon(double sz) => Container(
     width: sz, height: sz * 0.75, color: AppColors.card,
     child: const Icon(Icons.tv, color: AppColors.celeste, size: 16));
+}
+
+// ─── Panel de Previsualización + EPG ─────────────────────────────────────────
+class _PreviewPanel extends StatefulWidget {
+  final Channel? channel;
+  final XtreamService service;
+  final List<Channel> channels;
+  final int channelIndex;
+
+  const _PreviewPanel({
+    super.key,
+    this.channel,
+    required this.service,
+    required this.channels,
+    required this.channelIndex,
+  });
+
+  @override State<_PreviewPanel> createState() => _PreviewPanelState();
+}
+
+class _PreviewPanelState extends State<_PreviewPanel> {
+  VideoPlayerController? _ctrl;
+  List<EpgEntry> _epg = [];
+  bool _videoError = false;
+  bool _loadingEpg = false;
+  Timer? _debounce;
+  String? _loadedId;
+
+  @override void initState() {
+    super.initState();
+    if (widget.channel != null) _scheduleLoad();
+  }
+
+  @override void didUpdateWidget(_PreviewPanel old) {
+    super.didUpdateWidget(old);
+    if (old.channel?.id != widget.channel?.id) _scheduleLoad();
+  }
+
+  void _scheduleLoad() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), _load);
+  }
+
+  Future<void> _load() async {
+    final ch = widget.channel;
+    if (ch == null || !mounted) return;
+    final id = ch.id;
+    _loadedId = id;
+
+    // Dispose old player
+    _ctrl?.dispose();
+    if (mounted) setState(() { _ctrl = null; _videoError = false; _epg = []; _loadingEpg = true; });
+
+    // Fetch EPG
+    final epg = await widget.service.getShortEpg(id);
+    if (!mounted || _loadedId != id) return;
+    setState(() { _epg = epg; _loadingEpg = false; });
+
+    // Init mini-player (muted)
+    final url = widget.service.liveStreamUrl(id);
+    final ctrl = VideoPlayerController.networkUrl(
+      Uri.parse(url),
+      httpHeaders: const {'User-Agent': 'Mozilla/5.0'},
+      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+    );
+    try {
+      await ctrl.initialize();
+      if (!mounted || _loadedId != id) { ctrl.dispose(); return; }
+      ctrl.setVolume(0);
+      ctrl.play();
+      setState(() => _ctrl = ctrl);
+    } catch (_) {
+      ctrl.dispose();
+      if (mounted && _loadedId == id) setState(() => _videoError = true);
+    }
+  }
+
+  @override void dispose() {
+    _debounce?.cancel();
+    _ctrl?.dispose();
+    super.dispose();
+  }
+
+  @override Widget build(BuildContext context) {
+    final ch = widget.channel;
+
+    if (ch == null) {
+      return Container(
+        color: const Color(0xFF080B14),
+        child: const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.live_tv, color: Colors.white12, size: 48),
+          SizedBox(height: 12),
+          Text('Selecciona un canal', style: TextStyle(color: Colors.white24, fontSize: 12)),
+        ])),
+      );
+    }
+
+    return Container(
+      color: const Color(0xFF080B14),
+      child: Column(children: [
+
+        // ── Mini-player ─────────────────────────────────────────────────────
+        AspectRatio(
+          aspectRatio: 16 / 9,
+          child: GestureDetector(
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) =>
+              PlayerScreen(
+                title: ch.name,
+                streamUrl: widget.service.liveStreamUrl(ch.id),
+                channels: widget.channels,
+                channelIndex: widget.channelIndex,
+                service: widget.service,
+              ))),
+            child: Stack(fit: StackFit.expand, children: [
+              // Video
+              (_ctrl != null && _ctrl!.value.isInitialized)
+                ? ClipRect(child: FittedBox(
+                    fit: BoxFit.cover,
+                    child: SizedBox(
+                      width: _ctrl!.value.size.width,
+                      height: _ctrl!.value.size.height,
+                      child: VideoPlayer(_ctrl!),
+                    )))
+                : Container(
+                    color: const Color(0xFF0A0F1E),
+                    child: Center(child: _videoError
+                      ? const Icon(Icons.signal_cellular_connected_no_internet_4_bar_rounded,
+                          color: Colors.white24, size: 28)
+                      : const CircularProgressIndicator(
+                          color: AppColors.celeste, strokeWidth: 2))),
+              // Overlay inferior: nombre + badge
+              Positioned(bottom: 0, left: 0, right: 0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  decoration: const BoxDecoration(gradient: LinearGradient(
+                    begin: Alignment.bottomCenter, end: Alignment.topCenter,
+                    colors: [Color(0xDD000000), Colors.transparent])),
+                  child: Row(children: [
+                    if (ch.streamIcon.isNotEmpty)
+                      CachedNetworkImage(imageUrl: ch.streamIcon,
+                        width: 22, height: 16, fit: BoxFit.contain),
+                    const SizedBox(width: 6),
+                    Expanded(child: Text(ch.name, style: const TextStyle(
+                      color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                      maxLines: 1, overflow: TextOverflow.ellipsis)),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.85),
+                        borderRadius: BorderRadius.circular(4)),
+                      child: const Text('EN VIVO', style: TextStyle(
+                        color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold))),
+                  ]),
+                )),
+              // Ícono de play central (hint visual)
+              const Center(child: Icon(Icons.play_circle_outline_rounded,
+                color: Colors.white24, size: 36)),
+            ]),
+          ),
+        ),
+
+        // ── Header de guía ──────────────────────────────────────────────────
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: const BoxDecoration(border: Border(
+            top: BorderSide(color: Colors.white10),
+            bottom: BorderSide(color: Colors.white10))),
+          child: const Row(children: [
+            Icon(Icons.schedule_rounded, color: AppColors.celeste, size: 13),
+            SizedBox(width: 6),
+            Text('Guía de Programación', style: TextStyle(
+              color: Colors.white60, fontSize: 11, fontWeight: FontWeight.w600)),
+          ]),
+        ),
+
+        // ── Lista EPG ──────────────────────────────────────────────────────
+        Expanded(child: _loadingEpg
+          ? const Center(child: CircularProgressIndicator(
+              color: AppColors.celeste, strokeWidth: 2))
+          : _epg.isEmpty
+            ? const Center(child: Text('Sin guía disponible',
+                style: TextStyle(color: Colors.white24, fontSize: 12)))
+            : ListView.builder(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                itemCount: _epg.length,
+                itemBuilder: (_, i) {
+                  final e = _epg[i];
+                  final now = DateTime.now();
+                  final isCurrent = e.start.isBefore(now) && e.end.isAfter(now);
+                  final isFuture  = e.start.isAfter(now);
+                  return Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isCurrent ? AppColors.celeste.withOpacity(0.08) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isCurrent
+                          ? AppColors.celeste.withOpacity(0.25) : Colors.transparent)),
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      // Hora + badge AHORA
+                      SizedBox(width: 58, child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(e.timeRange.split(' - ').first, style: TextStyle(
+                            color: isCurrent ? AppColors.celeste : Colors.white38,
+                            fontSize: 10, fontWeight: FontWeight.w600)),
+                          if (isCurrent) ...[
+                            const SizedBox(height: 2),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: AppColors.celeste.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(3)),
+                              child: const Text('AHORA', style: TextStyle(
+                                color: AppColors.celeste, fontSize: 7,
+                                fontWeight: FontWeight.bold))),
+                          ],
+                        ])),
+                      const SizedBox(width: 6),
+                      // Título del programa
+                      Expanded(child: Text(e.title, style: TextStyle(
+                        color: isCurrent ? Colors.white : Colors.white55,
+                        fontSize: 11,
+                        fontWeight: isCurrent ? FontWeight.w600 : FontWeight.normal),
+                        maxLines: 2, overflow: TextOverflow.ellipsis)),
+                      // Campanita (solo programas futuros)
+                      if (isFuture)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4),
+                          child: ReminderBell(channel: ch, program: e, size: 15)),
+                    ]),
+                  );
+                })),
+      ]),
+    );
+  }
 }
 
 // ─── Panel de zona horaria EPG ────────────────────────────────────────────────

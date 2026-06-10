@@ -28,11 +28,15 @@ class _MoviesScreenState extends State<MoviesScreen> {
   bool _showSearch = false;
   String _searchQuery = '';
   final _searchCtrl = TextEditingController();
+  List<Movie> _allMovies = [];
+  bool _loadingAll = false;
 
-  List<Movie> get _visibleMovies => _searchQuery.isEmpty
-      ? _movies
-      : _movies.where((m) =>
-          m.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+  List<Movie> get _visibleMovies {
+    if (_searchQuery.isEmpty) return _movies;
+    final pool = _allMovies.isNotEmpty ? _allMovies : _movies;
+    return pool.where((m) =>
+        m.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+  }
 
   static final _virtualCats = [
     Category(id: HistoryService.recentCatId, name: 'Recientes'),
@@ -86,6 +90,14 @@ class _MoviesScreenState extends State<MoviesScreen> {
     categoryId: '', containerExtension: d['ext'] ?? 'mp4',
     plot: '', cast: '', genre: '', releaseDate: '', rating: '');
 
+  Future<void> _loadAllMovies() async {
+    if (_allMovies.isNotEmpty || _loadingAll) return;
+    setState(() => _loadingAll = true);
+    final all = await widget.service.getMovies();
+    if (!mounted) return;
+    setState(() { _allMovies = all; _loadingAll = false; });
+  }
+
   @override Widget build(BuildContext context) {
     final cols = R.gridCols(context);
     final p    = R.padding(context);
@@ -101,10 +113,14 @@ class _MoviesScreenState extends State<MoviesScreen> {
                 key: ValueKey(_showSearch),
                 color: _showSearch ? AppColors.azul : Colors.white70, size: 22)),
             tooltip: 'Buscar película',
-            onPressed: () => setState(() {
-              _showSearch = !_showSearch;
-              if (!_showSearch) { _searchCtrl.clear(); _searchQuery = ''; }
-            }),
+            onPressed: () {
+              final opening = !_showSearch;
+              setState(() {
+                _showSearch = !_showSearch;
+                if (!_showSearch) { _searchCtrl.clear(); _searchQuery = ''; }
+              });
+              if (opening) _loadAllMovies();
+            },
           ),
         ]),
       body: Column(children: [
@@ -129,7 +145,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
                     focusNode: _catFocusNodes[i], autofocus: i == 0,
                     onSelect: () => _selectCategory(_categories[i], i)))),
           Container(width: 1, color: Colors.white10),
-          Expanded(child: _loadingMovies
+          Expanded(child: (_loadingMovies || (_loadingAll && _searchQuery.isNotEmpty))
             ? const Center(child: CircularProgressIndicator(color: AppColors.azul))
             : _visibleMovies.isEmpty
               ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [

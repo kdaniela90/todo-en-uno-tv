@@ -27,8 +27,6 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    _userCtrl.text = '89142158';
-    _passCtrl.text = '0416531';
   }
 
   @override

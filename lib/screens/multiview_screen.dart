@@ -89,6 +89,7 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
     final ctrl = VideoPlayerController.networkUrl(
       Uri.parse(url),
       httpHeaders: const {'User-Agent': 'Mozilla/5.0'},
+      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
     );
 
     try {
@@ -241,12 +242,14 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
         // ── Background / Video ─────────────────────────────────────────
         if (p.hasVideo)
           Positioned.fill(
-            child: FittedBox(
-              fit: BoxFit.cover,
-              child: SizedBox(
-                width:  p.controller!.value.size.width,
-                height: p.controller!.value.size.height,
-                child: VideoPlayer(p.controller!),
+            child: ClipRect(
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width:  p.controller!.value.size.width,
+                  height: p.controller!.value.size.height,
+                  child: VideoPlayer(p.controller!),
+                ),
               ),
             ),
           )

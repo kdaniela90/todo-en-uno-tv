@@ -24,7 +24,7 @@ class HubScreen extends StatefulWidget {
 class _HubScreenState extends State<HubScreen> {
   late XtreamService _service;
   int _focused = 0;
-  final List<FocusNode> _focusNodes = List.generate(8, (_) => FocusNode());
+  final List<FocusNode> _focusNodes = List.generate(7, (_) => FocusNode());
 
   String get _expDate {
     final raw = widget.credentials['exp_date'] ?? '';
@@ -74,8 +74,12 @@ class _HubScreenState extends State<HubScreen> {
   void dispose() { for (final n in _focusNodes) n.dispose(); super.dispose(); }
 
   void _open(int index) async {
-    if (index == 4) { await _openParental(); return; }
-    if (index == 5) {
+    if (index == 3) {
+      Navigator.push(context, MaterialPageRoute(
+        builder: (_) => SearchScreen(service: _service)));
+      return;
+    }
+    if (index == 4) {
       Navigator.push(context, MaterialPageRoute(
         builder: (_) => MultiViewScreen(service: _service)));
       return;
@@ -84,7 +88,6 @@ class _HubScreenState extends State<HubScreen> {
       LiveScreen(service: _service),
       MoviesScreen(service: _service),
       SeriesScreen(service: _service),
-      SearchScreen(service: _service),
     ];
     if (index < screens.length) {
       Navigator.push(context, MaterialPageRoute(builder: (_) => screens[index]));
@@ -216,6 +219,25 @@ class _HubScreenState extends State<HubScreen> {
         ),
         const SizedBox(height: 8),
 
+        // ── Control Parental ─────────────────────────────────────────
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.shield_outlined, size: 18),
+            label: const Text('Control Parental'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFE86C2A),
+              side: const BorderSide(color: Color(0x55E86C2A)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(vertical: 12)),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _openParental();
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+
         // ── Botón de Refresh ─────────────────────────────────────────
         SizedBox(
           width: double.infinity,
@@ -261,13 +283,17 @@ class _HubScreenState extends State<HubScreen> {
       fontSize: 13, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
   ]);
 
-  static const _cards = [
-    (Icons.live_tv,             'En Vivo',     'Canales en tiempo real',  Color(0xFF00C3CC)),
-    (Icons.movie_outlined,      'Películas',   'Catálogo completo',        Color(0xFF3372E3)),
-    (Icons.tv,                  'Series',      'Temporadas y episodios',   Color(0xFF7426EF)),
-    (Icons.search,              'Buscar',      'Todo el contenido',        Color(0xFF5DE0E6)),
-    (Icons.shield_outlined,     'Parental',    'Control de contenido',     Color(0xFFE86C2A)),
-    (Icons.grid_view_rounded,   'Multi-Vista', 'Hasta 4 canales a la vez', Color(0xFF1DB954)),
+  // Fila 1: contenido principal
+  static const _mainCards = [
+    (Icons.live_tv,           'En Vivo',     'Canales en tiempo real',  Color(0xFF00C3CC)),
+    (Icons.movie_outlined,    'Películas',   'Catálogo completo',        Color(0xFF3372E3)),
+    (Icons.tv,                'Series',      'Temporadas y episodios',   Color(0xFF7426EF)),
+  ];
+
+  // Fila 2: utilidades
+  static const _utilCards = [
+    (Icons.search,            'Buscar',      'Todo el contenido',        Color(0xFF5DE0E6)),
+    (Icons.grid_view_rounded, 'Multi-Vista', 'Hasta 4 canales a la vez', Color(0xFF1DB954)),
   ];
 
   @override
@@ -291,9 +317,9 @@ class _HubScreenState extends State<HubScreen> {
                 style: TextStyle(color: Colors.white, fontSize: isPhone ? 14 : 20,
                   fontWeight: FontWeight.bold, letterSpacing: 1.5)),
               const Spacer(),
-              _TopButton(focusNode: _focusNodes[6], icon: Icons.info_outline, onTap: _showInfo),
+              _TopButton(focusNode: _focusNodes[5], icon: Icons.info_outline, onTap: _showInfo),
               const SizedBox(width: 6),
-              _TopButton(focusNode: _focusNodes[7], icon: Icons.logout, onTap: _logout),
+              _TopButton(focusNode: _focusNodes[6], icon: Icons.logout, onTap: _logout),
             ]),
           ),
           const Divider(color: Colors.white10, height: 1),
@@ -328,41 +354,78 @@ class _HubScreenState extends State<HubScreen> {
     );
   }
 
-  // TV / Tablet: 4 tarjetas en fila
+  // TV / Tablet: fila 1 (main) + fila 2 más pequeña (util)
   Widget _tvRow(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-    child: Row(
+    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+    child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(_cards.length, (i) {
-        final c = _cards[i];
-        return Expanded(child: Padding(
-          padding: EdgeInsets.only(left: i == 0 ? 0 : 16),
-          child: _HeroCard(
-            focusNode: _focusNodes[i], isFocused: _focused == i,
-            icon: c.$1, title: c.$2, subtitle: c.$3, color: c.$4,
-            onTap: () => _open(i),
+      children: [
+        // Fila 1 — En Vivo / Películas / Series
+        Expanded(
+          flex: 3,
+          child: Row(
+            children: List.generate(_mainCards.length, (i) {
+              final c = _mainCards[i];
+              return Expanded(child: Padding(
+                padding: EdgeInsets.only(left: i == 0 ? 0 : 14),
+                child: _HeroCard(
+                  focusNode: _focusNodes[i], isFocused: _focused == i,
+                  icon: c.$1, title: c.$2, subtitle: c.$3, color: c.$4,
+                  onTap: () => _open(i),
+                ),
+              ));
+            }),
           ),
-        ));
-      }),
+        ),
+        const SizedBox(height: 14),
+        // Fila 2 — Buscar / Multi-Vista (más pequeñas, centradas)
+        Expanded(
+          flex: 2,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(_utilCards.length, (i) {
+              final idx = _mainCards.length + i;
+              final c = _utilCards[i];
+              return Padding(
+                padding: EdgeInsets.only(left: i == 0 ? 0 : 14),
+                child: SizedBox(
+                  width: 200,
+                  child: _HeroCard(
+                    focusNode: _focusNodes[idx], isFocused: _focused == idx,
+                    icon: c.$1, title: c.$2, subtitle: c.$3, color: c.$4,
+                    onTap: () => _open(idx),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+      ],
     ),
   );
 
-  // Teléfono: grid 2×N scrollable
+  // Teléfono: grid 2 columnas (3 main + 2 util)
   Widget _phoneGrid(BuildContext context) => GridView.count(
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
     crossAxisCount: 2,
     childAspectRatio: 2.4,
     crossAxisSpacing: 12,
     mainAxisSpacing: 12,
-    children: List.generate(_cards.length, (i) {
-      final c = _cards[i];
-      return _HeroCard(
-        focusNode: _focusNodes[i], isFocused: _focused == i,
-        icon: c.$1, title: c.$2, subtitle: c.$3, color: c.$4,
-        compact: true,
-        onTap: () => _open(i),
-      );
-    }),
+    children: [
+      ..._mainCards.asMap().entries.map((e) => _HeroCard(
+        focusNode: _focusNodes[e.key], isFocused: _focused == e.key,
+        icon: e.value.$1, title: e.value.$2, subtitle: e.value.$3, color: e.value.$4,
+        compact: true, onTap: () => _open(e.key),
+      )),
+      ..._utilCards.asMap().entries.map((e) {
+        final idx = _mainCards.length + e.key;
+        return _HeroCard(
+          focusNode: _focusNodes[idx], isFocused: _focused == idx,
+          icon: e.value.$1, title: e.value.$2, subtitle: e.value.$3, color: e.value.$4,
+          compact: true, onTap: () => _open(idx),
+        );
+      }),
+    ],
   );
 }
 
