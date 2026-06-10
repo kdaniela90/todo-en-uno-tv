@@ -864,7 +864,7 @@ class _PreviewPanelState extends State<_PreviewPanel> {
                       const SizedBox(width: 6),
                       // Título del programa
                       Expanded(child: Text(e.title, style: TextStyle(
-                        color: isCurrent ? Colors.white : Colors.white55,
+                        color: isCurrent ? Colors.white : Colors.white.withOpacity(0.55),
                         fontSize: 11,
                         fontWeight: isCurrent ? FontWeight.w600 : FontWeight.normal),
                         maxLines: 2, overflow: TextOverflow.ellipsis)),
