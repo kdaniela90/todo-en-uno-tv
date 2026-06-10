@@ -526,7 +526,11 @@ class _ChannelTileState extends State<_ChannelTile> {
         Expanded(
           child: InkWell(
             focusNode: widget.focusNode, autofocus: widget.autofocus,
-            focusColor: Colors.transparent, onTap: _play,
+            focusColor: Colors.transparent,
+            // En teléfono: abre player directo. En tablet/TV: muestra preview.
+            onTap: widget.onFocused != null
+              ? () { widget.onFocused!(); }
+              : _play,
             borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
             child: Padding(
               padding: EdgeInsets.symmetric(
@@ -747,60 +751,74 @@ class _PreviewPanelState extends State<_PreviewPanel> {
         // ── Mini-player ─────────────────────────────────────────────────────
         AspectRatio(
           aspectRatio: 16 / 9,
-          child: GestureDetector(
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) =>
-              PlayerScreen(
-                title: ch.name,
-                streamUrl: widget.service.liveStreamUrl(ch.id),
-                channels: widget.channels,
-                channelIndex: widget.channelIndex,
-                service: widget.service,
-              ))),
-            child: Stack(fit: StackFit.expand, children: [
-              // Video
-              (_ctrl != null && _ctrl!.value.isInitialized)
-                ? ClipRect(child: FittedBox(
-                    fit: BoxFit.cover,
-                    child: SizedBox(
-                      width: _ctrl!.value.size.width,
-                      height: _ctrl!.value.size.height,
-                      child: VideoPlayer(_ctrl!),
-                    )))
-                : Container(
-                    color: const Color(0xFF0A0F1E),
-                    child: Center(child: _videoError
-                      ? const Icon(Icons.signal_cellular_connected_no_internet_4_bar_rounded,
-                          color: Colors.white24, size: 28)
-                      : const CircularProgressIndicator(
-                          color: AppColors.celeste, strokeWidth: 2))),
-              // Overlay inferior: nombre + badge
-              Positioned(bottom: 0, left: 0, right: 0,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                  decoration: const BoxDecoration(gradient: LinearGradient(
-                    begin: Alignment.bottomCenter, end: Alignment.topCenter,
-                    colors: [Color(0xDD000000), Colors.transparent])),
-                  child: Row(children: [
-                    if (ch.streamIcon.isNotEmpty)
-                      CachedNetworkImage(imageUrl: ch.streamIcon,
-                        width: 22, height: 16, fit: BoxFit.contain),
-                    const SizedBox(width: 6),
-                    Expanded(child: Text(ch.name, style: const TextStyle(
-                      color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
-                      maxLines: 1, overflow: TextOverflow.ellipsis)),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.red.withOpacity(0.85),
-                        borderRadius: BorderRadius.circular(4)),
-                      child: const Text('EN VIVO', style: TextStyle(
-                        color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold))),
-                  ]),
-                )),
-              // Ícono de play central (hint visual)
-              const Center(child: Icon(Icons.play_circle_outline_rounded,
-                color: Colors.white24, size: 36)),
-            ]),
+          child: Stack(fit: StackFit.expand, children: [
+            // Video (mudo, preview)
+            (_ctrl != null && _ctrl!.value.isInitialized)
+              ? ClipRect(child: FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: _ctrl!.value.size.width,
+                    height: _ctrl!.value.size.height,
+                    child: VideoPlayer(_ctrl!),
+                  )))
+              : Container(
+                  color: const Color(0xFF0A0F1E),
+                  child: Center(child: _videoError
+                    ? const Icon(Icons.signal_cellular_connected_no_internet_4_bar_rounded,
+                        color: Colors.white24, size: 28)
+                    : const CircularProgressIndicator(
+                        color: AppColors.celeste, strokeWidth: 2))),
+            // Overlay inferior: nombre + badge EN VIVO
+            Positioned(bottom: 0, left: 0, right: 0,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                decoration: const BoxDecoration(gradient: LinearGradient(
+                  begin: Alignment.bottomCenter, end: Alignment.topCenter,
+                  colors: [Color(0xDD000000), Colors.transparent])),
+                child: Row(children: [
+                  if (ch.streamIcon.isNotEmpty)
+                    CachedNetworkImage(imageUrl: ch.streamIcon,
+                      width: 22, height: 16, fit: BoxFit.contain),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text(ch.name, style: const TextStyle(
+                    color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                    maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.85),
+                      borderRadius: BorderRadius.circular(4)),
+                    child: const Text('EN VIVO', style: TextStyle(
+                      color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold))),
+                ]),
+              )),
+          ]),
+        ),
+
+        // ── Botón Reproducir ────────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.play_arrow_rounded, size: 20),
+              label: const Text('Reproducir en pantalla completa',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.celeste,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                elevation: 0),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) =>
+                PlayerScreen(
+                  title: ch.name,
+                  streamUrl: widget.service.liveStreamUrl(ch.id),
+                  channels: widget.channels,
+                  channelIndex: widget.channelIndex,
+                  service: widget.service,
+                ))),
+            ),
           ),
         ),
 

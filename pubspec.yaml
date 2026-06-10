@@ -21,6 +21,7 @@ dependencies:
   flutter_local_notifications: ^17.2.1
   timezone: ^0.9.4
   wakelock_plus: ^1.1.4
+  connectivity_plus: ^6.0.3
 
 dev_dependencies:
   flutter_test:

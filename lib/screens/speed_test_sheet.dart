@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:math' as math;
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../theme/app_theme.dart';
@@ -27,15 +29,19 @@ class SpeedTestSheet extends StatefulWidget {
 class _SpeedTestSheetState extends State<SpeedTestSheet>
     with SingleTickerProviderStateMixin {
 
-  _Phase   _phase       = _Phase.idle;
-  double   _speedMbps   = 0;    // resultado final descarga
-  int      _latencyMs   = -1;   // resultado ping
-  double   _gaugeTarget = 0;    // 0.0–1.0 para la aguja
+  _Phase   _phase           = _Phase.idle;
+  double   _speedMbps       = 0;    // resultado final descarga
+  int      _latencyMs       = -1;   // resultado ping
+  double   _gaugeTarget     = 0;    // 0.0–1.0 para la aguja al terminar
+  double   _liveGauge       = 0;    // 0.0–1.0 en tiempo real durante descarga
+  double   _liveMbps        = 0;    // Mbps en tiempo real (mostrado en el gauge)
+  String   _activeUrl       = '';   // hostname del servidor activo
+  String   _connectionLabel = '';   // WiFi / Ethernet / Datos móviles
 
   late AnimationController _animCtrl;
   late Animation<double>   _gaugeAnim;
 
-  static const _maxScale = 50.0; // 50 Mbps = 100% en el gauge
+  static const _maxScale = 50.0; // 50 Mbps = 100 % en el gauge
 
   @override
   void initState() {
@@ -43,16 +49,47 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
     _animCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 1200));
     _gaugeAnim = const AlwaysStoppedAnimation(0);
+    _detectConnection();
   }
 
   @override
   void dispose() { _animCtrl.dispose(); super.dispose(); }
 
+  // ── Detectar tipo de red ─────────────────────────────────────────────────
+
+  Future<void> _detectConnection() async {
+    try {
+      final results = await Connectivity().checkConnectivity();
+      if (!mounted) return;
+      for (final r in results) {
+        if (r == ConnectivityResult.ethernet) {
+          setState(() => _connectionLabel = 'Ethernet');
+          return;
+        }
+        if (r == ConnectivityResult.wifi) {
+          setState(() => _connectionLabel = 'WiFi');
+          return;
+        }
+        if (r == ConnectivityResult.mobile) {
+          setState(() => _connectionLabel = 'Datos móviles');
+          return;
+        }
+      }
+    } catch (_) {}
+  }
+
   // ── Test logic ──────────────────────────────────────────────────────────
 
   Future<void> _runTest() async {
     _animCtrl.reset();
-    setState(() { _phase = _Phase.pingTest; _latencyMs = -1; _speedMbps = 0; });
+    setState(() {
+      _phase     = _Phase.pingTest;
+      _latencyMs = -1;
+      _speedMbps = 0;
+      _liveGauge = 0;
+      _liveMbps  = 0;
+      _activeUrl = '';
+    });
 
     // ── 1. Ping — prueba el servidor IPTV, con fallback a Cloudflare ───
     _latencyMs = await _measurePing(widget.serverUrl)
@@ -63,11 +100,11 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
     if (!mounted) return;
     setState(() => _phase = _Phase.downloadTest);
 
-    // ── 2. Velocidad de descarga — streaming real de bytes ─────────────
+    // ── 2. Velocidad de descarga — streaming real (20 MB) ─────────────
     // 3 URLs en cascada; la primera que responda gana
     final result =
-        await _downloadSpeedMbps('https://speed.cloudflare.com/__down?bytes=5000000')
-     ?? await _downloadSpeedMbps('https://proof.ovh.net/files/1Mb.dat')
+        await _downloadSpeedMbps('https://speed.cloudflare.com/__down?bytes=20000000')
+     ?? await _downloadSpeedMbps('https://proof.ovh.net/files/10Mb.dat')
      ?? await _downloadSpeedMbps('https://httpbin.org/bytes/1000000')
      ?? -1.0;
 
@@ -76,7 +113,8 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
     _speedMbps   = result;
     _gaugeTarget = result < 0 ? 0 : (result / _maxScale).clamp(0.0, 1.0);
 
-    _gaugeAnim = Tween<double>(begin: 0, end: _gaugeTarget).animate(
+    // Anima desde la posición live actual hasta el resultado final
+    _gaugeAnim = Tween<double>(begin: _liveGauge, end: _gaugeTarget).animate(
         CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut));
     _animCtrl.forward();
 
@@ -95,30 +133,55 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
     } catch (_) { return null; }
   }
 
-  /// Descarga en streaming y mide Mbps reales. Devuelve null si falla o hay
-  /// muy pocos datos.
+  /// Descarga en streaming con actualizaciones en tiempo real del gauge.
+  /// Devuelve Mbps finales o null si falla.
   Future<double?> _downloadSpeedMbps(String url) async {
     final client = http.Client();
     try {
       final uri = Uri.tryParse(url);
       if (uri == null) return null;
 
-      final sw       = Stopwatch()..start();
+      // Mostrar hostname para transparencia
+      if (mounted) setState(() => _activeUrl = uri.host);
+
+      final sw = Stopwatch()..start();
       final response = await client
           .send(http.Request('GET', uri))
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode != 200) return null;
 
-      // Cuenta bytes a medida que llegan — más preciso que bodyBytes
-      final totalBytes = await response.stream
-          .fold<int>(0, (acc, chunk) => acc + chunk.length)
-          .timeout(const Duration(seconds: 30));
+      // Streaming con actualización del gauge cada ~200 ms
+      int totalBytes = 0;
+      int lastUpdateMs = 0;
+      final completer = Completer<int>();
+
+      response.stream
+          .timeout(const Duration(seconds: 60))
+          .listen(
+        (chunk) {
+          totalBytes += chunk.length;
+          final nowMs = sw.elapsedMilliseconds;
+          if (nowMs - lastUpdateMs >= 200 && totalBytes > 20000 && mounted) {
+            lastUpdateMs = nowMs;
+            final secs = nowMs / 1000.0;
+            final mbps = (totalBytes * 8) / (secs * 1000000);
+            setState(() {
+              _liveMbps  = mbps;
+              _liveGauge = (mbps / _maxScale).clamp(0.0, 1.0);
+            });
+          }
+        },
+        onDone:       () => completer.complete(totalBytes),
+        onError:      (_) => completer.complete(totalBytes),
+        cancelOnError: false,
+      );
+      totalBytes = await completer.future;
 
       sw.stop();
       final seconds = sw.elapsedMilliseconds / 1000.0;
       if (seconds < 0.1 || totalBytes < 50000) return null;
-      return (totalBytes * 8) / (seconds * 1000000); // Mbps
+      return (totalBytes * 8) / (seconds * 1000000);
     } catch (_) {
       return null;
     } finally {
@@ -163,8 +226,8 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
 
   String get _phaseLabel {
     switch (_phase) {
-      case _Phase.pingTest:      return 'Midiendo latencia al servidor…';
-      case _Phase.downloadTest:  return 'Midiendo velocidad de descarga…';
+      case _Phase.pingTest:     return 'Midiendo latencia al servidor…';
+      case _Phase.downloadTest: return 'Midiendo velocidad de descarga…';
       default: return '';
     }
   }
@@ -196,13 +259,17 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
               borderRadius: BorderRadius.circular(10)),
             child: const Icon(Icons.speed_rounded, color: AppColors.celeste, size: 22)),
           const SizedBox(width: 12),
-          const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Prueba de Velocidad',
-              style: TextStyle(color: Colors.white, fontSize: 16,
-                fontWeight: FontWeight.bold)),
-            Text('Diagnóstico de tu conexión',
-              style: TextStyle(color: Colors.white38, fontSize: 11)),
-          ]),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Prueba de Velocidad',
+                style: TextStyle(color: Colors.white, fontSize: 16,
+                  fontWeight: FontWeight.bold)),
+              const Text('Diagnóstico de tu conexión',
+                style: TextStyle(color: Colors.white38, fontSize: 11)),
+            ])),
+          // Chip tipo de red
+          if (_connectionLabel.isNotEmpty)
+            _ConnChip(label: _connectionLabel),
         ]),
 
         const SizedBox(height: 28),
@@ -212,20 +279,27 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
           width: 200, height: 120,
           child: AnimatedBuilder(
             animation: _gaugeAnim,
-            builder: (_, __) => CustomPaint(
-              painter: _GaugePainter(
-                value:    _gaugeAnim.value,
-                maxMbps:  _maxScale,
-                color:    _phase == _Phase.done || _phase == _Phase.error
-                              ? _rating.color : AppColors.celeste,
-                pulsing:  _phase == _Phase.pingTest || _phase == _Phase.downloadTest,
-              ),
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 18),
-                  child: _gaugeCenter(),
-                )),
-            ),
+            builder: (_, __) {
+              // Durante descarga: valor en tiempo real.
+              // Al terminar o en idle/ping: animación final.
+              final gaugeVal = (_phase == _Phase.downloadTest)
+                  ? _liveGauge
+                  : _gaugeAnim.value;
+              return CustomPaint(
+                painter: _GaugePainter(
+                  value:   gaugeVal,
+                  maxMbps: _maxScale,
+                  color:   (_phase == _Phase.done || _phase == _Phase.error)
+                               ? _rating.color : AppColors.celeste,
+                  pulsing: _phase == _Phase.pingTest,
+                ),
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 18),
+                    child: _gaugeCenter(),
+                  )),
+              );
+            },
           )),
 
         const SizedBox(height: 8),
@@ -236,7 +310,7 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: const [
-              Text('0', style: TextStyle(color: Colors.white24, fontSize: 10)),
+              Text('0',  style: TextStyle(color: Colors.white24, fontSize: 10)),
               Text('25', style: TextStyle(color: Colors.white24, fontSize: 10)),
               Text('50+ Mbps', style: TextStyle(color: Colors.white24, fontSize: 10)),
             ])),
@@ -246,22 +320,34 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
         // ── Results card ───────────────────────────────────────────────
         if (_phase == _Phase.done || _phase == _Phase.error)
           _ResultsCard(
-            latencyMs:  _latencyMs,
-            speedMbps:  _speedMbps,
-            rating:     _rating),
+            latencyMs: _latencyMs,
+            speedMbps: _speedMbps,
+            rating:    _rating),
 
         // ── Progress label ─────────────────────────────────────────────
         if (_phase == _Phase.pingTest || _phase == _Phase.downloadTest)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              SizedBox(
-                width: 14, height: 14,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2, color: AppColors.celeste)),
-              const SizedBox(width: 10),
-              Text(_phaseLabel,
-                style: const TextStyle(color: Colors.white54, fontSize: 12)),
+            child: Column(children: [
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                SizedBox(
+                  width: 14, height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2, color: AppColors.celeste)),
+                const SizedBox(width: 10),
+                Text(_phaseLabel,
+                  style: const TextStyle(color: Colors.white54, fontSize: 12)),
+              ]),
+              // Servidor activo (transparencia)
+              if (_activeUrl.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  const Icon(Icons.dns_outlined, color: Colors.white24, size: 12),
+                  const SizedBox(width: 4),
+                  Text('Servidor: $_activeUrl',
+                    style: const TextStyle(color: Colors.white24, fontSize: 10)),
+                ]),
+              ],
             ])),
 
         const SizedBox(height: 16),
@@ -299,10 +385,10 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
                   ? null : _runTest)),
         ]),
 
-        // Safety note
+        // Nota al pie
         const SizedBox(height: 12),
         const Text(
-          'La prueba descarga ~5 MB de datos para medir la velocidad.',
+          'La prueba descarga ~20 MB de datos para medir la velocidad real.',
           textAlign: TextAlign.center,
           style: TextStyle(color: Colors.white24, fontSize: 10)),
       ]),
@@ -320,11 +406,23 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
           style: TextStyle(color: Colors.white30, fontSize: 10)),
       ]);
     }
-    if (_phase == _Phase.pingTest || _phase == _Phase.downloadTest) {
+    if (_phase == _Phase.pingTest) {
       return const Column(mainAxisSize: MainAxisSize.min, children: [
         Text('…', style: TextStyle(color: Colors.white54, fontSize: 28,
           fontWeight: FontWeight.bold)),
         Text('Mbps', style: TextStyle(color: Colors.white24, fontSize: 11)),
+      ]);
+    }
+    if (_phase == _Phase.downloadTest) {
+      // Velocidad en tiempo real
+      final display = _liveMbps >= 100
+          ? _liveMbps.toStringAsFixed(0)
+          : _liveMbps.toStringAsFixed(1);
+      return Column(mainAxisSize: MainAxisSize.min, children: [
+        Text(display,
+          style: const TextStyle(color: AppColors.celeste, fontSize: 28,
+            fontWeight: FontWeight.bold)),
+        const Text('Mbps', style: TextStyle(color: Colors.white54, fontSize: 11)),
       ]);
     }
     if (_speedMbps < 0) {
@@ -338,9 +436,36 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
         style: TextStyle(
           color: _rating.color, fontSize: 28,
           fontWeight: FontWeight.bold)),
-      Text('Mbps', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+      const Text('Mbps', style: TextStyle(color: Colors.white54, fontSize: 11)),
     ]);
   }
+}
+
+// ─── Connection type chip ─────────────────────────────────────────────────────
+class _ConnChip extends StatelessWidget {
+  final String label;
+  const _ConnChip({required this.label});
+
+  IconData get _icon {
+    if (label == 'Ethernet')      return Icons.cable_rounded;
+    if (label == 'Datos móviles') return Icons.signal_cellular_alt_rounded;
+    return Icons.wifi_rounded;
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(
+      color: Colors.white.withOpacity(0.07),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: Colors.white.withOpacity(0.12))),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(_icon, color: Colors.white54, size: 12),
+      const SizedBox(width: 4),
+      Text(label,
+        style: const TextStyle(color: Colors.white54, fontSize: 11)),
+    ]),
+  );
 }
 
 // ─── Results card ─────────────────────────────────────────────────────────────
@@ -401,7 +526,7 @@ class _ResultsCard extends StatelessWidget {
           Container(width: 1, height: 36, color: Colors.white10),
           _Metric(
             label: 'Latencia',
-            value: latencyMs < 0 ? 'N/D' : '${latencyMs} ms',
+            value: latencyMs < 0 ? 'N/D' : '$latencyMs ms',
             icon: Icons.network_ping_rounded,
             color: _latencyColor(latencyMs)),
           Container(width: 1, height: 36, color: Colors.white10),
@@ -466,7 +591,7 @@ class _GaugePainter extends CustomPainter {
     required this.pulsing,
   });
 
-  // Arc: starts at 210° (bottom-left), sweeps 240° clockwise to 90° (top-right)
+  // Arc: starts at 210° (bottom-left), sweeps 240° clockwise to bottom-right
   static const _startDeg = 210.0;
   static const _sweepDeg = 240.0;
   static const _startRad = _startDeg * math.pi / 180;
@@ -474,12 +599,12 @@ class _GaugePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final cx  = size.width  / 2;
-    final cy  = size.height * 0.80; // pivot lower so arc fills top area
-    final r   = math.min(cx, cy) - 6;
+    final cx   = size.width  / 2;
+    final cy   = size.height * 0.80;
+    final r    = math.min(cx, cy) - 6;
     final rect = Rect.fromCircle(center: Offset(cx, cy), radius: r);
 
-    // ── Background track ────────────────────────────────────────────
+    // Background track
     final bgPaint = Paint()
       ..style       = PaintingStyle.stroke
       ..strokeWidth = 10
@@ -487,7 +612,7 @@ class _GaugePainter extends CustomPainter {
       ..color       = Colors.white10;
     canvas.drawArc(rect, _startRad, _sweepRad, false, bgPaint);
 
-    // ── Colored fill ────────────────────────────────────────────────
+    // Colored fill
     if (value > 0 || pulsing) {
       final fillSweep = pulsing ? _sweepRad * 0.05 : _sweepRad * value;
       final fgPaint = Paint()
@@ -498,26 +623,22 @@ class _GaugePainter extends CustomPainter {
             startAngle: _startRad,
             endAngle:   _startRad + _sweepRad,
             colors: const [
-              Color(0xFF4CAF50), // green
-              Color(0xFFFFEB3B), // yellow
-              Color(0xFFFF9800), // orange
-              Color(0xFFF44336), // red
+              Color(0xFF4CAF50),
+              Color(0xFFFFEB3B),
+              Color(0xFFFF9800),
+              Color(0xFFF44336),
             ],
             stops: const [0.0, 0.35, 0.65, 1.0],
-          ).createShader(Rect.fromCircle(
-              center: Offset(cx, cy),
-              radius: r + 5));
+          ).createShader(Rect.fromCircle(center: Offset(cx, cy), radius: r + 5));
       canvas.drawArc(rect, _startRad, fillSweep, false, fgPaint);
     }
 
-    // ── Tick marks (0, 10, 20, 30, 40, 50 Mbps) ────────────────────
+    // Tick marks
     final tickPaint = Paint()
       ..color       = Colors.white24
       ..strokeWidth = 1.5;
-
     for (int i = 0; i <= 5; i++) {
-      final tickFraction = i / 5;
-      final angle = _startRad + _sweepRad * tickFraction;
+      final angle  = _startRad + _sweepRad * (i / 5);
       final innerR = r - 12;
       final outerR = r + 1;
       canvas.drawLine(
@@ -526,27 +647,23 @@ class _GaugePainter extends CustomPainter {
         tickPaint);
     }
 
-    // ── Needle ──────────────────────────────────────────────────────
+    // Needle
     if (value > 0 && !pulsing) {
       final needleAngle = _startRad + _sweepRad * value;
       final needleR     = r - 4;
       final nx = cx + needleR * math.cos(needleAngle);
       final ny = cy + needleR * math.sin(needleAngle);
       canvas.drawLine(
-        Offset(cx, cy),
-        Offset(nx, ny),
+        Offset(cx, cy), Offset(nx, ny),
         Paint()
           ..color       = color
           ..strokeWidth = 2.5
           ..strokeCap   = StrokeCap.round);
-      // Dot at needle tip
-      canvas.drawCircle(Offset(nx, ny), 4,
-        Paint()..color = color);
+      canvas.drawCircle(Offset(nx, ny), 4, Paint()..color = color);
     }
 
-    // ── Center dot ──────────────────────────────────────────────────
-    canvas.drawCircle(Offset(cx, cy), 5,
-      Paint()..color = Colors.white24);
+    // Center dot
+    canvas.drawCircle(Offset(cx, cy), 5, Paint()..color = Colors.white24);
   }
 
   @override

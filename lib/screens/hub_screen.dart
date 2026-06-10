@@ -23,7 +23,7 @@ class HubScreen extends StatefulWidget {
 
 class _HubScreenState extends State<HubScreen> {
   late XtreamService _service;
-  int _focused = 0;
+  int _focused = -1;   // -1 = ninguna tarjeta enfocada
   final List<FocusNode> _focusNodes = List.generate(7, (_) => FocusNode());
 
   String get _expDate {
@@ -47,7 +47,13 @@ class _HubScreenState extends State<HubScreen> {
     for (int i = 0; i < _focusNodes.length; i++) {
       final idx = i;
       _focusNodes[idx].addListener(() {
-        if (_focusNodes[idx].hasFocus && mounted) setState(() => _focused = idx);
+        if (!mounted) return;
+        // Busca cuál nodo tiene foco ahora (puede ser -1 si ninguno)
+        int nowFocused = -1;
+        for (int j = 0; j < _focusNodes.length; j++) {
+          if (_focusNodes[j].hasFocus) { nowFocused = j; break; }
+        }
+        setState(() => _focused = nowFocused);
       });
     }
     _checkDailyRefresh();
