@@ -72,9 +72,9 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
     // ── 2. Velocidad de descarga (5 MB desde Cloudflare CDN) ──────────
     // Si falla, intentamos con 1 MB como fallback
     final result = await _downloadSpeedMbps(
-        'https://speed.cloudflare.com/__down?bytes=5000000', 5_000_000)
+        'https://speed.cloudflare.com/__down?bytes=5000000', 5000000)
       ?? await _downloadSpeedMbps(
-          'https://proof.ovh.net/files/1Mb.dat', 1_000_000)
+          'https://proof.ovh.net/files/1Mb.dat', 1000000)
       ?? -1.0;
 
     if (!mounted) return;
@@ -99,7 +99,7 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
       final bytes   = res.bodyBytes.length;
       final seconds = sw.elapsedMilliseconds / 1000;
       if (seconds < 0.1 || bytes < 1000) return null;
-      return (bytes * 8) / (seconds * 1_000_000); // Mbps
+      return (bytes * 8) / (seconds * 1000000); // Mbps
     } catch (_) { return null; }
   }
 

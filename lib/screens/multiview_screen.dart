@@ -427,7 +427,7 @@ class _EmptyPanel extends StatelessWidget {
               ])
             : Column(mainAxisSize: MainAxisSize.min, children: [
                 Icon(Icons.add_circle_outline_rounded,
-                  color: focused ? AppColors.celeste : Colors.white14,
+                  color: focused ? AppColors.celeste : Colors.white12,
                   size: 32),
                 const SizedBox(height: 8),
                 Text(
@@ -435,7 +435,7 @@ class _EmptyPanel extends StatelessWidget {
                   style: TextStyle(
                     color: focused
                         ? AppColors.celeste.withOpacity(0.8)
-                        : Colors.white14,
+                        : Colors.white12,
                     fontSize: 10)),
               ]),
       ),

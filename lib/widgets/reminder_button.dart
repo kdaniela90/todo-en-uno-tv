@@ -88,7 +88,7 @@ Future<void> showReminderDialog(
       backgroundColor: const Color(0xFF0D1020),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: const Row(children: [
-        Icon(Icons.notifications_add_rounded, color: Color(0xFFFFB300), size: 22),
+        Icon(Icons.notification_add_rounded, color: Color(0xFFFFB300), size: 22),
         SizedBox(width: 10),
         Expanded(child: Text('Agregar recordatorio',
           style: TextStyle(color: Colors.white, fontSize: 15))),
@@ -250,7 +250,7 @@ class _OptionTileState extends State<_OptionTile> {
       margin: const EdgeInsets.symmetric(vertical: 3),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
       decoration: BoxDecoration(
-        color: _focused ? const Color(0xFFFFB300).withOpacity(0.15) : Colors.white08,
+        color: _focused ? const Color(0xFFFFB300).withOpacity(0.15) : Colors.white.withOpacity(0.08),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: _focused ? const Color(0xFFFFB300) : Colors.white12)),
