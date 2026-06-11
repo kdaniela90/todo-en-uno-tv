@@ -59,6 +59,66 @@ class _HubScreenState extends State<HubScreen> {
     _checkDailyRefresh();
   }
 
+  Future<void> _forceRefresh(BuildContext dialogCtx) async {
+    // 1. Close the info dialog
+    Navigator.pop(dialogCtx);
+
+    // 2. Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const _RefreshingDialog(),
+    );
+
+    // 3. Clear all in-memory caches + update timestamp
+    await ContentRefreshService.forceRefresh();
+
+    // 4. Verify connection and get fresh category count
+    int liveCount = 0;
+    bool connected = false;
+    try {
+      final cats = await _service.getLiveCategories();
+      if (cats.isNotEmpty) {
+        liveCount = cats.length;
+        connected = true;
+      }
+    } catch (_) {}
+
+    // 5. Dismiss loading dialog
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+
+    // 6. Show result snackbar
+    final now = DateTime.now();
+    final timeStr =
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(
+              connected ? Icons.check_circle_outline : Icons.warning_amber_rounded,
+              color: Colors.white, size: 16),
+            const SizedBox(width: 8),
+            Text(connected ? 'Contenido actualizado' : 'Caché limpiado · sin conexión'),
+          ]),
+          if (connected)
+            Text(
+              '$liveCount categorías verificadas · EPG renovado · $timeStr',
+              style: const TextStyle(color: Colors.white70, fontSize: 11),
+            ),
+        ],
+      ),
+      backgroundColor: (connected ? AppColors.celeste : Colors.orange).withOpacity(0.9),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      duration: const Duration(seconds: 4),
+    ));
+  }
+
   Future<void> _checkDailyRefresh() async {
     final refreshed = await ContentRefreshService.checkAndRefresh();
     if (refreshed && mounted) {
@@ -255,22 +315,7 @@ class _HubScreenState extends State<HubScreen> {
               side: BorderSide(color: AppColors.celeste.withOpacity(0.5)),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               padding: const EdgeInsets.symmetric(vertical: 12)),
-            onPressed: () async {
-              await ContentRefreshService.forceRefresh();
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: const Row(children: [
-                    Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
-                    SizedBox(width: 10),
-                    Text('Caché limpiado. El contenido se cargará nuevo.'),
-                  ]),
-                  backgroundColor: AppColors.celeste.withOpacity(0.85),
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  duration: const Duration(seconds: 3),
-                ));
-            },
+            onPressed: () => _forceRefresh(ctx),
           ),
         ),
         const SizedBox(height: 10),
@@ -496,6 +541,28 @@ class _HeroCard extends StatelessWidget {
             ]),
           ),
     ),
+  );
+}
+
+// ─── Refreshing Dialog ────────────────────────────────────────────────────────
+class _RefreshingDialog extends StatelessWidget {
+  const _RefreshingDialog();
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    backgroundColor: const Color(0xFF0D1020),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    content: const Column(mainAxisSize: MainAxisSize.min, children: [
+      SizedBox(height: 8),
+      CircularProgressIndicator(),
+      SizedBox(height: 20),
+      Text('Actualizando contenido…',
+        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+      SizedBox(height: 6),
+      Text('Verificando conexión con el servidor',
+        style: TextStyle(color: Colors.white38, fontSize: 12),
+        textAlign: TextAlign.center),
+      SizedBox(height: 8),
+    ]),
   );
 }
 

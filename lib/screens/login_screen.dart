@@ -232,39 +232,15 @@ p{color:#5a7a9b;font-size:.9rem;line-height:1.6}
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                AnimatedRemote(width: 80, height: 160),
-                const SizedBox(height: 28),
-                // Wordmark estilo brandkit
-                ShaderMask(
-                  shaderCallback: (bounds) => const LinearGradient(
-                    colors: [AppColors.celeste, AppColors.azul],
-                  ).createShader(bounds),
-                  child: const Text('TODO',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 42,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 3,
-                      height: 1.0,
-                    )),
+                // Logo principal
+                Image.asset(
+                  'assets/images/logo.png',
+                  width: 180,
+                  fit: BoxFit.contain,
                 ),
-                const Text('EN UNO',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 42,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 3,
-                    height: 1.05,
-                  )),
-                const Text('TV',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 42,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 6,
-                    height: 1.05,
-                  )),
-                const SizedBox(height: 16),
+                const SizedBox(height: 20),
+                AnimatedRemote(width: 80, height: 160),
+                const SizedBox(height: 20),
                 const Text('Tu entretenimiento en un solo lugar',
                   style: TextStyle(
                     color: Colors.white38,
@@ -296,16 +272,25 @@ p{color:#5a7a9b;font-size:.9rem;line-height:1.6}
   Widget _singleColumnLayout(BuildContext context, double keyboardH) => Center(
     child: SingleChildScrollView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: EdgeInsets.fromLTRB(32, 32, 32, keyboardH + 40),
+      padding: EdgeInsets.fromLTRB(32, 36, 32, keyboardH + 40),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 400),
         child: Column(children: [
-          AnimatedRemote(width: 54, height: 108),
-          const SizedBox(height: 16),
-          const Text('TODO EN UNO TV',
-            style: TextStyle(color: Colors.white, fontSize: 20,
-              fontWeight: FontWeight.bold, letterSpacing: 2)),
-          const SizedBox(height: 24),
+          // Logo principal
+          Image.asset(
+            'assets/images/logo.png',
+            width: 160,
+            fit: BoxFit.contain,
+          ),
+          const SizedBox(height: 10),
+          // Control animado como acento visual (más pequeño)
+          AnimatedRemote(width: 32, height: 64),
+          const SizedBox(height: 12),
+          const Text('Tu entretenimiento en un solo lugar',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white38, fontSize: 12,
+              letterSpacing: 0.4)),
+          const SizedBox(height: 28),
           _formContent(context),
         ]),
       ),

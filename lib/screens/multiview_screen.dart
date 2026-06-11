@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
@@ -16,10 +17,21 @@ class _PanelState {
   bool loading = false;
   bool error   = false;
 
+  // ── Anti-freeze watchdog ─────────────────────────────────────────────────
+  Timer?   watchdog;
+  Duration lastPos     = Duration.zero;
+  int      staleCount  = 0; // segundos acumulados sin progreso (umbral: 30 s)
+
+  // ── Race-condition guard ─────────────────────────────────────────────────
+  // Se incrementa en cada nueva carga; permite descartar callbacks obsoletos.
+  int loadId = 0;
+
   bool get hasVideo =>
       controller != null && controller!.value.isInitialized;
 
   void dispose() {
+    watchdog?.cancel();
+    watchdog = null;
     controller?.dispose();
     controller = null;
   }
@@ -77,12 +89,19 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
 
   Future<void> _loadChannel(int idx, Channel ch) async {
     final panel = _panels[idx];
+
+    // Cancelar carga anterior + watchdog
     panel.dispose();
+    panel.loadId++;
+    final myLoad = panel.loadId;
+
     setState(() {
-      panel.channel  = ch;
-      panel.loading  = true;
-      panel.error    = false;
+      panel.channel    = ch;
+      panel.loading    = true;
+      panel.error      = false;
       panel.controller = null;
+      panel.staleCount = 0;
+      panel.lastPos    = Duration.zero;
     });
 
     final url  = widget.service.liveStreamUrl(ch.id);
@@ -93,19 +112,77 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
     );
 
     try {
-      await ctrl.initialize();
-      if (!mounted) { ctrl.dispose(); return; }
+      // Timeout de 20 s para no quedar pegado en "Conectando..."
+      await ctrl.initialize().timeout(const Duration(seconds: 20));
+      if (!mounted || panel.loadId != myLoad) { ctrl.dispose(); return; }
+
       await ctrl.setVolume(idx == _focused ? 1.0 : 0.0);
       await ctrl.play();
+
       setState(() {
         panel.controller = ctrl;
         panel.loading    = false;
       });
+
+      // ── Listener de error: auto-reconexión a los 4 s ──────────────────
+      ctrl.addListener(() {
+        if (!mounted || panel.loadId != myLoad || panel.controller != ctrl) return;
+        if (ctrl.value.hasError) {
+          panel.watchdog?.cancel();
+          if (mounted) setState(() { panel.loading = false; panel.error = true; });
+          Future.delayed(const Duration(seconds: 4), () {
+            if (mounted && panel.loadId == myLoad && panel.channel != null) {
+              _loadChannel(idx, panel.channel!);
+            }
+          });
+        }
+      });
+
+      // ── Watchdog: detecta stream verdaderamente congelado ────────────
+      //
+      // Se ejecuta cada 5 s y acumula tiempo "sin progreso".
+      // Solo cuenta tiempo cuando el player NO está en buffering normal
+      // (isBuffering = true significa que está cargando datos — eso es
+      //  esperado en live TV y NO debe disparar una reconexión).
+      // Reconecta únicamente si la posición lleva ≥ 30 s sin avanzar
+      // Y el player no está en estado de buffering.
+      // Durante reproducción normal, la posición avanza continuamente
+      // → staleCount se reinicia a 0 y el watchdog nunca actúa.
+      panel.watchdog = Timer.periodic(const Duration(seconds: 5), (_) {
+        if (!mounted || panel.loadId != myLoad || panel.controller != ctrl) return;
+        if (!ctrl.value.isInitialized || !ctrl.value.isPlaying) {
+          panel.staleCount = 0;
+          return;
+        }
+
+        // Buffering normal (cargando segmento): esperar, no contar
+        if (ctrl.value.isBuffering) return;
+
+        final pos = ctrl.value.position;
+        if (pos != panel.lastPos) {
+          // Stream avanzando con normalidad — resetear contador
+          panel.staleCount = 0;
+          panel.lastPos    = pos;
+        } else {
+          // Posición sin cambio (y no buffering): posible congelamiento
+          panel.staleCount += 5; // acumular segundos
+          if (panel.staleCount >= 30) {
+            // 30 segundos reales sin progreso → reconectar
+            panel.staleCount = 0;
+            if (panel.channel != null && mounted) _loadChannel(idx, panel.channel!);
+          }
+        }
+      });
+
     } catch (_) {
       ctrl.dispose();
-      if (mounted) setState(() {
-        panel.loading = false;
-        panel.error   = true;
+      if (!mounted || panel.loadId != myLoad) return;
+      setState(() { panel.loading = false; panel.error = true; });
+      // Auto-retry a los 5 s si el stream no responde
+      Future.delayed(const Duration(seconds: 5), () {
+        if (mounted && panel.loadId == myLoad && panel.channel != null) {
+          _loadChannel(idx, panel.channel!);
+        }
       });
     }
   }
@@ -409,24 +486,21 @@ class _EmptyPanel extends StatelessWidget {
             ])
           : error
             ? Column(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.signal_wifi_statusbar_4_bar_rounded,
-                  color: Colors.red, size: 28),
-                const SizedBox(height: 6),
-                const Text('Error de stream',
-                  style: TextStyle(color: Colors.white38, fontSize: 10)),
-                if (onRetry != null) ...[
-                  const SizedBox(height: 8),
+                const Icon(Icons.wifi_off_rounded, color: Colors.red, size: 24),
+                const SizedBox(height: 4),
+                const Text('Error · Reconectando…',
+                  style: TextStyle(color: Colors.white38, fontSize: 9)),
+                const SizedBox(height: 8),
+                if (onRetry != null)
                   GestureDetector(
                     onTap: onRetry,
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        border: Border.all(
-                          color: AppColors.celeste.withOpacity(0.5)),
+                        border: Border.all(color: AppColors.celeste.withOpacity(0.5)),
                         borderRadius: BorderRadius.circular(6)),
-                      child: const Text('Reintentar',
+                      child: const Text('Reintentar ahora',
                         style: TextStyle(color: AppColors.celeste, fontSize: 9)))),
-                ],
               ])
             : Column(mainAxisSize: MainAxisSize.min, children: [
                 Icon(Icons.add_circle_outline_rounded,

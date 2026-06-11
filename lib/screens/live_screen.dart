@@ -81,6 +81,39 @@ class _LiveScreenState extends State<LiveScreen> {
     }
   }
 
+  /// En teléfono: muestra un bottom sheet con preview de video + guía EPG completa.
+  void _showChannelDetail(BuildContext ctx, Channel ch, int idx) {
+    showModalBottomSheet(
+      context: ctx,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => SizedBox(
+        height: MediaQuery.of(ctx).size.height * 0.88,
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF0D1020),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+          child: Column(children: [
+            // Handle
+            Container(
+              margin: const EdgeInsets.only(top: 10, bottom: 2),
+              width: 36, height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+            // Panel de preview + EPG (reutilizamos el mismo widget)
+            Expanded(child: _PreviewPanel(
+              key: ValueKey(ch.id),
+              channel: ch,
+              service: widget.service,
+              channels: _channels,
+              channelIndex: idx,
+            )),
+          ]),
+        ),
+      ),
+    );
+  }
+
   Future<void> _selectCategory(Category cat, int index) async {
     _searchCtrl.clear();
     setState(() {
@@ -168,7 +201,7 @@ class _LiveScreenState extends State<LiveScreen> {
               : ListView.builder(
                   padding: EdgeInsets.symmetric(vertical: 8, horizontal: R.padding(context)),
                   itemCount: _visibleChannels.length,
-                  itemBuilder: (_, i) {
+                  itemBuilder: (ctx, i) {
                     final ch = _visibleChannels[i];
                     return _ChannelTile(
                       channel: ch, service: widget.service,
@@ -177,6 +210,11 @@ class _LiveScreenState extends State<LiveScreen> {
                       focusNode: i < _channelFocusNodes.length ? _channelFocusNodes[i] : FocusNode(),
                       autofocus: i == 0,
                       onFocused: () => _onChannelFocused(ch, i),
+                      // Teléfono: tap → bottom sheet con preview + EPG
+                      // TV/Tablet: onSelect es null → onTap usa onFocused (3ª columna)
+                      onSelect: isPhone
+                          ? () => _showChannelDetail(ctx, ch, i)
+                          : null,
                       onFavChanged: () => _selectCategory(_categories[_selectedCatIndex], _selectedCatIndex),
                     );
                   })),
@@ -415,11 +453,14 @@ class _ChannelTile extends StatefulWidget {
   final FocusNode focusNode;
   final bool autofocus;
   final VoidCallback? onFocused;
+  /// Callback para el tap explícito (toque/OK del mando).
+  /// Si es null, el comportamiento por defecto es llamar [onFocused].
+  final VoidCallback? onSelect;
   final VoidCallback onFavChanged;
   const _ChannelTile({required this.channel, required this.service,
     required this.channels, required this.channelIndex,
     required this.focusNode, this.autofocus = false,
-    this.onFocused, required this.onFavChanged});
+    this.onFocused, this.onSelect, required this.onFavChanged});
   @override State<_ChannelTile> createState() => _ChannelTileState();
 }
 class _ChannelTileState extends State<_ChannelTile> {
@@ -527,10 +568,12 @@ class _ChannelTileState extends State<_ChannelTile> {
           child: InkWell(
             focusNode: widget.focusNode, autofocus: widget.autofocus,
             focusColor: Colors.transparent,
-            // En teléfono: abre player directo. En tablet/TV: muestra preview.
-            onTap: widget.onFocused != null
-              ? () { widget.onFocused!(); }
-              : _play,
+            // onSelect viene del padre:
+            //   • Teléfono  → bottom sheet con preview + EPG
+            //   • TV/Tablet → actualiza la tercera columna (onFocused)
+            // _play() solo se invoca desde el botón "Reproducir" del _PreviewPanel.
+            onTap: widget.onSelect
+                ?? (widget.onFocused != null ? () => widget.onFocused!() : null),
             borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
             child: Padding(
               padding: EdgeInsets.symmetric(
@@ -810,14 +853,20 @@ class _PreviewPanelState extends State<_PreviewPanel> {
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 elevation: 0),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) =>
-                PlayerScreen(
-                  title: ch.name,
-                  streamUrl: widget.service.liveStreamUrl(ch.id),
-                  channels: widget.channels,
-                  channelIndex: widget.channelIndex,
-                  service: widget.service,
-                ))),
+              onPressed: () async {
+                // Guardar en Recientes igual que al reproducir directamente
+                await HistoryService.addRecent(HistoryService.live,
+                  {'id': ch.id, 'name': ch.name, 'icon': ch.streamIcon});
+                if (!mounted) return;
+                Navigator.push(context, MaterialPageRoute(builder: (_) =>
+                  PlayerScreen(
+                    title: ch.name,
+                    streamUrl: widget.service.liveStreamUrl(ch.id),
+                    channels: widget.channels,
+                    channelIndex: widget.channelIndex,
+                    service: widget.service,
+                  )));
+              },
             ),
           ),
         ),
