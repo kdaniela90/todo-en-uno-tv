@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:qr_flutter/qr_flutter.dart';
 import '../services/storage_service.dart';
 import '../services/xtream_service.dart';
@@ -85,6 +86,13 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    // Load logo as base64 data URI so it can be embedded in the HTML page
+    String logoDataUri = '';
+    try {
+      final bytes = await rootBundle.load('assets/images/logo.png');
+      logoDataUri = 'data:image/png;base64,${base64Encode(bytes.buffer.asUint8List())}';
+    } catch (_) {}
+
     HttpServer? server;
     try { server = await HttpServer.bind(InternetAddress.anyIPv4, 8765); }
     catch (_) { server = null; }
@@ -119,7 +127,7 @@ class _LoginScreenState extends State<LoginScreen> {
           if (mounted) _login();
         }
       } else {
-        req.response.write(_loginHtml(url));
+        req.response.write(_loginHtml(url, logoDataUri));
         await req.response.close();
       }
     });
@@ -133,7 +141,7 @@ class _LoginScreenState extends State<LoginScreen> {
     server.close(force: true);
   }
 
-  static String _loginHtml(String url) => '''<!DOCTYPE html>
+  static String _loginHtml(String url, String logoDataUri) => '''<!DOCTYPE html>
 <html lang="es">
 <head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
@@ -144,7 +152,9 @@ body{background:#060C1B;font-family:-apple-system,sans-serif;min-height:100vh;
   display:flex;align-items:center;justify-content:center;padding:20px}
 .card{background:#0D1020;border-radius:20px;padding:32px 24px;max-width:340px;
   width:100%;border:1px solid rgba(93,224,230,.15)}
-.logo{text-align:center;font-size:2rem;margin-bottom:12px}
+.logo{text-align:center;margin-bottom:16px}
+.logo img{width:160px;height:auto;display:inline-block}
+.logo-fallback{color:white;font-size:1.4rem;font-weight:700;letter-spacing:2px}
 h1{color:white;font-size:1.1rem;font-weight:700;text-align:center;margin-bottom:4px}
 .sub{color:#5a7a9b;font-size:.8rem;text-align:center;margin-bottom:24px}
 label{color:#5a7a9b;font-size:.75rem;font-weight:600;display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em}
@@ -157,8 +167,9 @@ button{width:100%;padding:16px;background:linear-gradient(90deg,#5DE0E6,#3372E3)
   font-weight:700;cursor:pointer;margin-top:4px}
 </style></head>
 <body><div class="card">
-<div class="logo">TV</div>
-<h1>TODO EN UNO TV</h1>
+<div class="logo">
+${logoDataUri.isNotEmpty ? '<img src="$logoDataUri" alt="Todo en Uno TV">' : '<div class="logo-fallback">TODO EN UNO TV</div>'}
+</div>
 <p class="sub">Ingresa tus credenciales desde el teléfono</p>
 <form method="POST" action="/">
 <label>Usuario</label>

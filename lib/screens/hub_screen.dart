@@ -503,6 +503,7 @@ class _HeroCard extends StatelessWidget {
     child: AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeOut,
+      clipBehavior: Clip.hardEdge,
       transform: Matrix4.identity()..scale(isFocused ? 1.05 : 1.0),
       transformAlignment: Alignment.center,
       decoration: BoxDecoration(
@@ -537,7 +538,8 @@ class _HeroCard extends StatelessWidget {
                 fontSize: 17, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
               const SizedBox(height: 5),
               Text(subtitle, style: TextStyle(color: isFocused ? Colors.white54 : Colors.white30,
-                fontSize: 11), textAlign: TextAlign.center),
+                fontSize: 11), textAlign: TextAlign.center,
+                maxLines: 2, overflow: TextOverflow.ellipsis),
             ]),
           ),
     ),
