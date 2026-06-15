@@ -1,12 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:qr_flutter/qr_flutter.dart';
 import '../services/storage_service.dart';
 import '../services/xtream_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/animated_remote.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -23,18 +23,83 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscure = true;
   String? _error;
 
+  // QR local server (auto-start en initState)
+  HttpServer? _qrServer;
+  String? _qrUrl;
+  bool _qrReceived = false;
+  String _logoDataUri = '';
+
   static const String _server = 'http://allinonestream.fans:8080';
 
   @override
   void initState() {
     super.initState();
+    _autoStartQrServer();
   }
 
   @override
   void dispose() {
     _userCtrl.dispose(); _passCtrl.dispose();
     _userFocus.dispose(); _passFocus.dispose();
+    _qrServer?.close(force: true);
     super.dispose();
+  }
+
+  // ── Auto-start QR server ─────────────────────────────────────────────────
+  Future<void> _autoStartQrServer() async {
+    // Logo como base64 para el HTML del móvil
+    try {
+      final bytes = await rootBundle.load('assets/images/logo.png');
+      _logoDataUri = 'data:image/png;base64,${base64Encode(bytes.buffer.asUint8List())}';
+    } catch (_) {}
+
+    String? ip;
+    try {
+      for (final iface in await NetworkInterface.list(type: InternetAddressType.IPv4)) {
+        for (final addr in iface.addresses) {
+          if (!addr.isLoopback) { ip = addr.address; break; }
+        }
+        if (ip != null) break;
+      }
+    } catch (_) {}
+    if (ip == null) return;
+
+    HttpServer? server;
+    for (final port in [8765, 8766, 8767]) {
+      try { server = await HttpServer.bind(InternetAddress.anyIPv4, port); break; }
+      catch (_) {}
+    }
+    if (server == null) return;
+
+    _qrServer = server;
+    final url = 'http://$ip:${server.port}';
+    if (mounted) setState(() => _qrUrl = url);
+
+    server.listen((req) async {
+      if (_qrReceived) { req.response.close(); return; }
+      req.response.headers.set('Access-Control-Allow-Origin', '*');
+      req.response.headers.set('Content-Type', 'text/html; charset=utf-8');
+
+      if (req.method == 'POST') {
+        final body = await utf8.decoder.bind(req).join();
+        final params = Uri.splitQueryString(body);
+        final user = params['username'] ?? '';
+        final pass = params['password'] ?? '';
+        req.response.write(_successHtml);
+        await req.response.close();
+        if (user.isNotEmpty && pass.isNotEmpty && mounted) {
+          _qrReceived = true;
+          setState(() { _userCtrl.text = user; _passCtrl.text = pass; });
+          await _qrServer?.close(force: true);
+          _qrServer = null;
+          await Future.delayed(const Duration(milliseconds: 300));
+          if (mounted) _login();
+        }
+      } else {
+        req.response.write(_loginHtml(url, _logoDataUri));
+        await req.response.close();
+      }
+    });
   }
 
   Future<void> _login() async {
@@ -68,77 +133,18 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // ── QR local-server login ────────────────────────────────────────────────
-  Future<void> _openQrLogin() async {
-    String? ip;
-    try {
-      for (final iface in await NetworkInterface.list(type: InternetAddressType.IPv4)) {
-        for (final addr in iface.addresses) {
-          if (!addr.isLoopback) { ip = addr.address; break; }
-        }
-        if (ip != null) break;
-      }
-    } catch (_) {}
-
-    if (ip == null) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+  // ── Mostrar diálogo QR (modo una columna) ────────────────────────────────
+  void _showQrDialog() {
+    if (_qrUrl == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('No hay conexión WiFi activa'), backgroundColor: Colors.red));
       return;
     }
-
-    // Load logo as base64 data URI so it can be embedded in the HTML page
-    String logoDataUri = '';
-    try {
-      final bytes = await rootBundle.load('assets/images/logo.png');
-      logoDataUri = 'data:image/png;base64,${base64Encode(bytes.buffer.asUint8List())}';
-    } catch (_) {}
-
-    HttpServer? server;
-    try { server = await HttpServer.bind(InternetAddress.anyIPv4, 8765); }
-    catch (_) { server = null; }
-
-    if (server == null) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('No se pudo iniciar el servidor local')));
-      return;
-    }
-
-    final url = 'http://$ip:8765';
-    bool received = false;
-
-    server.listen((req) async {
-      if (received) { req.response.close(); return; }
-      req.response.headers.set('Access-Control-Allow-Origin', '*');
-      req.response.headers.set('Content-Type', 'text/html; charset=utf-8');
-
-      if (req.method == 'POST') {
-        final body = await utf8.decoder.bind(req).join();
-        final params = Uri.splitQueryString(body);
-        final user = params['username'] ?? '';
-        final pass = params['password'] ?? '';
-        req.response.write(_successHtml);
-        await req.response.close();
-        if (user.isNotEmpty && pass.isNotEmpty && mounted) {
-          received = true;
-          setState(() { _userCtrl.text = user; _passCtrl.text = pass; });
-          await server?.close(force: true);
-          if (mounted) Navigator.pop(context);
-          await Future.delayed(const Duration(milliseconds: 300));
-          if (mounted) _login();
-        }
-      } else {
-        req.response.write(_loginHtml(url, logoDataUri));
-        await req.response.close();
-      }
-    });
-
-    if (!mounted) { server.close(force: true); return; }
-    await showDialog(
+    showDialog(
       context: context,
       barrierDismissible: true,
-      builder: (_) => _QrDialog(url: url),
+      builder: (_) => _QrDialog(url: _qrUrl!),
     );
-    server.close(force: true);
   }
 
   static String _loginHtml(String url, String logoDataUri) => '''<!DOCTYPE html>
@@ -223,55 +229,41 @@ p{color:#5a7a9b;font-size:.9rem;line-height:1.6}
   // ── Dos columnas: TV / tablet landscape ─────────────────────────────────
   Widget _twoColumnLayout(BuildContext context) => Row(
     children: [
-      // ── Columna izquierda: logo ──────────────────────────────────────────
+      // ── Columna izquierda: logo animado ──────────────────────────────────
       Expanded(
         child: Container(
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [
-                AppColors.background,
-                const Color(0xFF0A1128),
-              ],
+              colors: [Color(0xFF060C1B), Color(0xFF0A1128)],
             ),
-            border: const Border(
-              right: BorderSide(color: Colors.white10, width: 1),
-            ),
+            border: Border(right: BorderSide(color: Colors.white10, width: 1)),
           ),
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Logo principal
-                Image.asset(
-                  'assets/images/logo.png',
-                  width: 180,
-                  fit: BoxFit.contain,
-                ),
-                const SizedBox(height: 20),
-                AnimatedRemote(width: 80, height: 160),
-                const SizedBox(height: 20),
-                const Text('Tu entretenimiento en un solo lugar',
-                  style: TextStyle(
-                    color: Colors.white38,
-                    fontSize: 13,
-                    letterSpacing: 0.5,
-                  )),
-              ],
-            ),
-          ),
+          child: const Center(child: _AnimatedLogo()),
         ),
       ),
 
-      // ── Columna derecha: formulario ──────────────────────────────────────
+      // ── Columna derecha: formulario + QR inline ───────────────────────────
       Expanded(
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 32),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 380),
-              child: _formContent(context),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _formContent(context),
+                  if (_qrUrl != null) ...[
+                    const SizedBox(height: 28),
+                    _QrInline(url: _qrUrl!),
+                  ],
+                  const SizedBox(height: 24),
+                  const Center(child: Text('© 2026 Todo en Uno TV',
+                    style: TextStyle(color: Colors.white24, fontSize: 12))),
+                ],
+              ),
             ),
           ),
         ),
@@ -287,22 +279,25 @@ p{color:#5a7a9b;font-size:.9rem;line-height:1.6}
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 400),
         child: Column(children: [
-          // Logo principal
-          Image.asset(
-            'assets/images/logo.png',
-            width: 160,
-            fit: BoxFit.contain,
-          ),
-          const SizedBox(height: 10),
-          // Control animado como acento visual (más pequeño)
-          AnimatedRemote(width: 32, height: 64),
-          const SizedBox(height: 12),
-          const Text('Tu entretenimiento en un solo lugar',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white38, fontSize: 12,
-              letterSpacing: 0.4)),
+          Image.asset('assets/images/logo.png', width: 120, fit: BoxFit.contain),
           const SizedBox(height: 28),
           _formContent(context),
+          const SizedBox(height: 12),
+          SizedBox(width: double.infinity, height: 48,
+            child: OutlinedButton.icon(
+              onPressed: _loading ? null : _showQrDialog,
+              icon: const Icon(Icons.qr_code_scanner, size: 18),
+              label: const Text('Ingresar desde el móvil',
+                style: TextStyle(fontSize: 14, letterSpacing: 0.5)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.celeste,
+                side: BorderSide(color: AppColors.celeste.withOpacity(0.5)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14))),
+            )),
+          const SizedBox(height: 24),
+          const Center(child: Text('© 2026 Todo en Uno TV',
+            style: TextStyle(color: Colors.white24, fontSize: 12))),
         ]),
       ),
     ),
@@ -367,23 +362,6 @@ p{color:#5a7a9b;font-size:.9rem;line-height:1.6}
                   fontWeight: FontWeight.bold, letterSpacing: 1.5)),
         )),
 
-      const SizedBox(height: 12),
-      SizedBox(width: double.infinity, height: 48,
-        child: OutlinedButton.icon(
-          onPressed: _loading ? null : _openQrLogin,
-          icon: const Icon(Icons.qr_code_scanner, size: 18),
-          label: const Text('Ingresar desde el móvil',
-            style: TextStyle(fontSize: 14, letterSpacing: 0.5)),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.celeste,
-            side: BorderSide(color: AppColors.celeste.withOpacity(0.5)),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14))),
-        )),
-
-      const SizedBox(height: 24),
-      const Center(child: Text('© 2026 Todo en Uno TV',
-        style: TextStyle(color: Colors.white24, fontSize: 12))),
     ]),
   );
 
@@ -421,7 +399,166 @@ p{color:#5a7a9b;font-size:.9rem;line-height:1.6}
   );
 }
 
-// ─── QR Dialog ────────────────────────────────────────────────────────────────
+// ─── Logo animado (columna izquierda TV) ─────────────────────────────────────
+class _AnimatedLogo extends StatefulWidget {
+  const _AnimatedLogo();
+  @override State<_AnimatedLogo> createState() => _AnimatedLogoState();
+}
+
+class _AnimatedLogoState extends State<_AnimatedLogo>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _glow;
+  late final Animation<double> _shift;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(seconds: 4))
+      ..repeat(reverse: true);
+    _glow  = Tween(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+    _shift = Tween(begin: 0.0, end: 1.0).animate(_ctrl);
+  }
+
+  @override void dispose() { _ctrl.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _ctrl,
+    builder: (_, __) => Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Logo con halo pulsante
+        Stack(alignment: Alignment.center, children: [
+          Container(
+            width: 200, height: 200,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF5DE0E6).withOpacity(_glow.value * 0.25),
+                  blurRadius: 60, spreadRadius: 20),
+                BoxShadow(
+                  color: const Color(0xFF3372E3).withOpacity(_glow.value * 0.15),
+                  blurRadius: 80, spreadRadius: 10),
+              ],
+            ),
+          ),
+          Image.asset('assets/images/logo.png', width: 160, fit: BoxFit.contain),
+        ]),
+
+        const SizedBox(height: 28),
+
+        // Wordmark con gradiente animado
+        ShaderMask(
+          shaderCallback: (bounds) => LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: const [
+              Color(0xFF5DE0E6), Color(0xFF3372E3),
+              Color(0xFF7426EF), Color(0xFF5DE0E6),
+            ],
+            stops: [
+              (_shift.value * 0.5).clamp(0.0, 0.9),
+              (0.35 + _shift.value * 0.3).clamp(0.1, 0.95),
+              (0.65 + _shift.value * 0.2).clamp(0.2, 1.0),
+              (1.0).clamp(0.3, 1.0),
+            ],
+          ).createShader(bounds),
+          child: const Column(children: [
+            Text('TODO EN UNO',
+              style: TextStyle(color: Colors.white, fontSize: 22,
+                fontWeight: FontWeight.w900, letterSpacing: 4)),
+            Text('TV',
+              style: TextStyle(color: Colors.white, fontSize: 36,
+                fontWeight: FontWeight.w900, letterSpacing: 8, height: 0.9)),
+          ]),
+        ),
+
+        const SizedBox(height: 16),
+        Text('Tu entretenimiento en un solo lugar',
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.3 + _glow.value * 0.2),
+            fontSize: 12, letterSpacing: 0.5)),
+        const SizedBox(height: 10),
+        // Línea decorativa
+        CustomPaint(
+          size: const Size(160, 3),
+          painter: _GradientLinePainter(progress: _shift.value),
+        ),
+      ],
+    ),
+  );
+}
+
+class _GradientLinePainter extends CustomPainter {
+  final double progress;
+  const _GradientLinePainter({required this.progress});
+  @override bool shouldRepaint(_GradientLinePainter o) => o.progress != progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..shader = ui.Gradient.linear(
+        Offset(size.width * progress * 0.4, 0), Offset(size.width, 0),
+        const [Color(0xFF5DE0E6), Color(0xFF3372E3), Color(0xFF7426EF)],
+        [0.0, 0.5, 1.0])
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(Offset(0, size.height / 2),
+      Offset(size.width, size.height / 2), paint);
+  }
+}
+
+// ─── QR inline (columna derecha TV) ──────────────────────────────────────────
+class _QrInline extends StatelessWidget {
+  final String url;
+  const _QrInline({required this.url});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(
+      color: Colors.white.withOpacity(0.04),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: AppColors.celeste.withOpacity(0.2)),
+    ),
+    child: Column(children: [
+      Row(children: [
+        const Icon(Icons.smartphone, color: AppColors.celeste, size: 18),
+        const SizedBox(width: 8),
+        const Text('Ingresar desde el móvil',
+          style: TextStyle(color: Colors.white70, fontSize: 13,
+            fontWeight: FontWeight.w600)),
+      ]),
+      const SizedBox(height: 4),
+      const Text(
+        'Escanea con la cámara y escribe tus credenciales en el teléfono',
+        style: TextStyle(color: Colors.white38, fontSize: 11)),
+      const SizedBox(height: 16),
+      Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.white, borderRadius: BorderRadius.circular(12)),
+        child: QrImageView(
+          data: url, version: QrVersions.auto, size: 160,
+          backgroundColor: Colors.white,
+          eyeStyle: const QrEyeStyle(
+            eyeShape: QrEyeShape.square, color: Color(0xFF060C1B)),
+          dataModuleStyle: const QrDataModuleStyle(
+            dataModuleShape: QrDataModuleShape.square, color: Color(0xFF060C1B)),
+        ),
+      ),
+      const SizedBox(height: 8),
+      const Text('Misma red WiFi requerida',
+        style: TextStyle(color: Colors.white24, fontSize: 10)),
+    ]),
+  );
+}
+
+// ─── QR Dialog (modo una columna / teléfono) ─────────────────────────────────
 class _QrDialog extends StatelessWidget {
   final String url;
   const _QrDialog({required this.url});
