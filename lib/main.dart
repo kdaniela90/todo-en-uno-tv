@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:media_kit/media_kit.dart';
 import 'services/epg_settings_service.dart';
 import 'services/reminder_service.dart';
 import 'theme/app_theme.dart';
@@ -9,6 +10,7 @@ import 'screens/hub_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized();   // requerido por media_kit
   await EpgSettingsService.init();
   await ReminderService.init();
   SystemChrome.setPreferredOrientations([

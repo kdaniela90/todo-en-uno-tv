@@ -13,8 +13,12 @@ dependencies:
   http: ^1.2.0
   shared_preferences: ^2.2.2
   provider: ^6.1.1
+  # video_player se mantiene para live_screen (mini-preview) y multiview
   video_player: ^2.8.2
-  chewie: 1.7.4
+  # media_kit reemplaza chewie en player_screen (soporta selección de pistas)
+  media_kit: ^1.1.10
+  media_kit_video: ^1.2.4
+  media_kit_libs_video: ^1.0.4
   cached_network_image: ^3.3.1
   google_fonts: ^6.2.1
   qr_flutter: ^4.1.0
