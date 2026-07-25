@@ -3,6 +3,8 @@ name: Build Android APK
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - 'version.json'   # Evita loop cuando el bot hace push de version.json
   workflow_dispatch:
 
 permissions:
@@ -15,6 +17,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -33,28 +37,9 @@ jobs:
       - name: Build APK
         run: flutter build apk --release --no-obfuscate --android-skip-build-dependency-validation
 
-      - name: Generate version.json
-        run: |
-          VERSION_CODE=$(grep '^version:' pubspec.yaml | grep -oP '\+\K[0-9]+')
-          VERSION_NAME=$(grep '^version:' pubspec.yaml | grep -oP '[0-9]+\.[0-9]+\.[0-9]+')
-          cat > version.json << EOF
-          {
-            "versionCode": $VERSION_CODE,
-            "versionName": "$VERSION_NAME",
-            "downloadUrl": "https://github.com/kdaniela90/todo-en-uno-tv/releases/download/latest/app-release.apk",
-            "releaseNotes": "Nueva versión disponible. Actualiza para obtener las últimas mejoras."
-          }
-          EOF
-
-      - name: Commit version.json
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git add version.json
-          git diff --staged --quiet || git commit -m "chore: update version.json [skip ci]"
-          git push
-
-      - name: Create Release
+      # 1️⃣ Sube el APK PRIMERO — el archivo tiene que estar disponible
+      #    antes de que version.json anuncie la nueva versión
+      - name: Create / Update Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
@@ -63,3 +48,22 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 2️⃣ Solo DESPUÉS de que el APK esté subido, actualiza version.json
+      - name: Generate version.json
+        run: |
+          VERSION_CODE=$(grep '^version:' pubspec.yaml | grep -oP '\+\K[0-9]+')
+          VERSION_NAME=$(grep '^version:' pubspec.yaml | grep -oP '[0-9]+\.[0-9]+\.[0-9]+')
+          printf '{\n  "versionCode": %s,\n  "versionName": "%s",\n  "downloadUrl": "https://github.com/kdaniela90/todo-en-uno-tv/releases/download/latest/app-release.apk",\n  "releaseNotes": "Nueva versión disponible. Actualiza para obtener las últimas mejoras."\n}\n' \
+            "$VERSION_CODE" "$VERSION_NAME" > version.json
+          echo "▶ version.json generado: v$VERSION_NAME ($VERSION_CODE)"
+          cat version.json
+
+      - name: Commit version.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add version.json
+          git diff --cached --quiet && echo "Sin cambios en version.json" && exit 0
+          git commit -m "chore: sync version.json [skip ci]"
+          git push
