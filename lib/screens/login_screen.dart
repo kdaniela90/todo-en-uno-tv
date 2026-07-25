@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:qr_flutter/qr_flutter.dart';
+import '../services/config_service.dart';
 import '../services/storage_service.dart';
 import '../services/xtream_service.dart';
 import '../theme/app_theme.dart';
@@ -29,7 +30,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _qrReceived = false;
   String _logoDataUri = '';
 
-  static const String _server = 'http://allinonestream.fans:8080';
+  // URL del servidor gestionada remotamente por ConfigService (config.json en GitHub)
 
   @override
   void initState() {
@@ -55,12 +56,22 @@ class _LoginScreenState extends State<LoginScreen> {
 
     String? ip;
     try {
-      for (final iface in await NetworkInterface.list(type: InternetAddressType.IPv4)) {
-        for (final addr in iface.addresses) {
-          if (!addr.isLoopback) { ip = addr.address; break; }
+      final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4);
+      // Preferir interfaz WiFi (wlan0, wlan1, etc.)
+      NetworkInterface? selected;
+      for (final iface in interfaces) {
+        final name = iface.name.toLowerCase();
+        if (name.startsWith('wlan') || name.startsWith('wifi') || name.startsWith('wl')) {
+          selected = iface;
+          break;
         }
-        if (ip != null) break;
       }
+      // Si no hay WiFi, usar primera interfaz que no sea loopback ni virtual
+      selected ??= interfaces.where((i) {
+        final n = i.name.toLowerCase();
+        return !n.startsWith('lo') && !n.startsWith('dummy') && !n.startsWith('v');
+      }).firstOrNull;
+      ip = selected?.addresses.where((a) => !a.isLoopback).firstOrNull?.address;
     } catch (_) {}
     if (ip == null) return;
 
@@ -86,6 +97,7 @@ class _LoginScreenState extends State<LoginScreen> {
         final user = params['username'] ?? '';
         final pass = params['password'] ?? '';
         req.response.write(_successHtml);
+        await req.response.flush();
         await req.response.close();
         if (user.isNotEmpty && pass.isNotEmpty && mounted) {
           _qrReceived = true;
@@ -97,6 +109,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       } else {
         req.response.write(_loginHtml(url, _logoDataUri));
+        await req.response.flush();
         await req.response.close();
       }
     });
@@ -108,7 +121,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() { _loading = true; _error = null; });
 
     final service = XtreamService(
-      server: _server,
+      server: ConfigService.serverUrl,
       username: _userCtrl.text.trim(),
       password: _passCtrl.text.trim());
     final result = await service.login();
@@ -119,11 +132,11 @@ class _LoginScreenState extends State<LoginScreen> {
       await StorageService.saveCredentials(
         username: _userCtrl.text.trim(),
         password: _passCtrl.text.trim(),
-        server: _server, expDate: expRaw);
+        server: ConfigService.serverUrl, expDate: expRaw);
       Navigator.pushReplacementNamed(context, '/hub', arguments: {
         'username': _userCtrl.text.trim(),
         'password': _passCtrl.text.trim(),
-        'server': _server, 'exp_date': expRaw,
+        'server': ConfigService.serverUrl, 'exp_date': expRaw,
       });
     } else {
       setState(() {
