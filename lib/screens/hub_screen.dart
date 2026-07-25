@@ -15,6 +15,7 @@ import 'multiview_screen.dart';
 import 'speed_test_sheet.dart';
 import 'reminders_screen.dart';
 import 'downloads_screen.dart';
+import '../services/update_service.dart';
 
 class HubScreen extends StatefulWidget {
   final Map<String, String> credentials;
@@ -26,6 +27,7 @@ class _HubScreenState extends State<HubScreen> {
   late XtreamService _service;
   int _focused = -1;   // -1 = ninguna tarjeta enfocada
   final List<FocusNode> _focusNodes = List.generate(8, (_) => FocusNode());
+  AppUpdate? _pendingUpdate;
 
   String get _expDate {
     final raw = widget.credentials['exp_date'] ?? '';
@@ -58,6 +60,24 @@ class _HubScreenState extends State<HubScreen> {
       });
     }
     _checkDailyRefresh();
+    // Verificar actualizaciones en background (sin bloquear la UI)
+    Future.delayed(const Duration(seconds: 3), _checkForUpdate);
+  }
+
+  Future<void> _checkForUpdate() async {
+    final update = await UpdateService.checkForUpdate();
+    if (update != null && mounted) {
+      setState(() => _pendingUpdate = update);
+    }
+  }
+
+  void _showUpdateDialog() {
+    if (_pendingUpdate == null) return;
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => _UpdateDialog(update: _pendingUpdate!),
+    );
   }
 
   Future<void> _forceRefresh(BuildContext dialogCtx) async {
@@ -375,6 +395,29 @@ class _HubScreenState extends State<HubScreen> {
                 style: TextStyle(color: Colors.white, fontSize: isPhone ? 14 : 20,
                   fontWeight: FontWeight.bold, letterSpacing: 1.5)),
               const Spacer(),
+              if (_pendingUpdate != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: GestureDetector(
+                    onTap: _showUpdateDialog,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE89B3A).withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFFE89B3A), width: 1.2)),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        const Icon(Icons.system_update_rounded,
+                          color: Color(0xFFE89B3A), size: 13),
+                        const SizedBox(width: 4),
+                        Text('v${_pendingUpdate!.versionName}',
+                          style: const TextStyle(
+                            color: Color(0xFFE89B3A),
+                            fontSize: 11, fontWeight: FontWeight.bold)),
+                      ]),
+                    ),
+                  ),
+                ),
               _TopButton(focusNode: _focusNodes[6], icon: Icons.info_outline, onTap: _showInfo),
               const SizedBox(width: 6),
               _TopButton(focusNode: _focusNodes[7], icon: Icons.logout, onTap: _logout),
@@ -606,5 +649,86 @@ class _TopButtonState extends State<_TopButton> {
       child: Icon(widget.icon, color: _focused ? AppColors.celeste : Colors.white60,
         size: R.isPhone(context) ? 18 : 22),
     ),
+  );
+}
+
+// ─── Diálogo de actualización ─────────────────────────────────────────────────
+class _UpdateDialog extends StatefulWidget {
+  final AppUpdate update;
+  const _UpdateDialog({required this.update});
+  @override State<_UpdateDialog> createState() => _UpdateDialogState();
+}
+
+class _UpdateDialogState extends State<_UpdateDialog> {
+  bool _downloading = false;
+  double _progress = 0.0;
+  String? _error;
+
+  Future<void> _download() async {
+    setState(() { _downloading = true; _progress = 0.0; _error = null; });
+
+    final path = await UpdateService.downloadApk(
+      widget.update,
+      onProgress: (p) { if (mounted) setState(() => _progress = p); },
+      onError: (e) { if (mounted) setState(() { _downloading = false; _error = e; }); },
+    );
+
+    if (path != null) {
+      try {
+        await UpdateService.installApk(path);
+        if (mounted) Navigator.pop(context);
+      } catch (e) {
+        if (mounted) setState(() { _downloading = false; _error = 'Error al instalar: $e'; });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    backgroundColor: const Color(0xFF0D1020),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+    title: Row(children: [
+      const Icon(Icons.system_update_rounded, color: Color(0xFFE89B3A), size: 22),
+      const SizedBox(width: 10),
+      Text('Versión ${widget.update.versionName}',
+        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+    ]),
+    content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (widget.update.releaseNotes.isNotEmpty) ...[
+        Text(widget.update.releaseNotes,
+          style: const TextStyle(color: Colors.white70, fontSize: 13)),
+        const SizedBox(height: 16),
+      ],
+      if (_downloading) ...[
+        LinearProgressIndicator(
+          value: _progress > 0 ? _progress : null,
+          backgroundColor: Colors.white12,
+          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFE89B3A)),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _progress > 0
+            ? 'Descargando… ${(_progress * 100).toInt()}%'
+            : 'Conectando…',
+          style: const TextStyle(color: Colors.white54, fontSize: 12)),
+      ],
+      if (_error != null)
+        Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+    ]),
+    actions: _downloading ? [] : [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Después', style: TextStyle(color: Colors.white38))),
+      ElevatedButton.icon(
+        onPressed: _download,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFFE89B3A),
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+        icon: const Icon(Icons.download_rounded, size: 16),
+        label: const Text('Actualizar'),
+      ),
+    ],
   );
 }
