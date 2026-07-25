@@ -79,49 +79,57 @@ class _LoginScreenState extends State<LoginScreen> {
     if (mounted) setState(() => _qrUrl = url);
 
     server.listen((req) async {
-      if (_qrReceived) {
-        req.response.statusCode = 503;
-        await req.response.close();
-        return;
-      }
-
-      // Headers comunes a todas las respuestas
-      req.response.headers.set('Access-Control-Allow-Origin', '*');
-      req.response.headers.set('Content-Type', 'text/html; charset=utf-8');
-      req.response.headers.set('Connection', 'close');
-      req.response.headers.set('Cache-Control', 'no-cache, no-store');
-
-      if (req.method == 'POST') {
-        final body = await utf8.decoder.bind(req).join();
-        final params = Uri.splitQueryString(body);
-        final user = params['username'] ?? '';
-        final pass = params['password'] ?? '';
-
-        // Enviar respuesta de éxito con Content-Length correcto
-        final successBytes = utf8.encode(_successHtml);
-        req.response.statusCode = 200;
-        req.response.contentLength = successBytes.length;
-        req.response.add(successBytes);
-        await req.response.close();
-
-        if (user.isNotEmpty && pass.isNotEmpty && mounted) {
-          _qrReceived = true;
-          setState(() { _userCtrl.text = user; _passCtrl.text = pass; });
-          await _qrServer?.close(force: true);
-          _qrServer = null;
-          await Future.delayed(const Duration(milliseconds: 300));
-          if (mounted) _login();
+      // Envuelto en try-catch: si algo falla dentro del callback async,
+      // Dart no propaga la excepción automáticamente y la conexión quedaría
+      // abierta sin respuesta → el browser muestra página en blanco.
+      try {
+        if (_qrReceived) {
+          req.response.statusCode = 503;
+          req.response.contentLength = 0;
+          await req.response.close();
+          return;
         }
-      } else {
-        // Enviar formulario de login con Content-Length correcto
-        // contentLength (no headers.set) desactiva el chunked encoding interno de Dart,
-        // que es lo que causa páginas en blanco en Safari iOS y Chrome Android.
-        final html = _loginHtml(url);
-        final bytes = utf8.encode(html);
-        req.response.statusCode = 200;
-        req.response.contentLength = bytes.length;
-        req.response.add(bytes);
-        await req.response.close();
+
+        if (req.method == 'POST') {
+          final body = await utf8.decoder.bind(req).join();
+          final params = Uri.splitQueryString(body);
+          final user = params['username'] ?? '';
+          final pass = params['password'] ?? '';
+
+          final successBytes = utf8.encode(_successHtml);
+          req.response.statusCode = 200;
+          req.response.headers.set('Content-Type', 'text/html; charset=utf-8');
+          req.response.headers.set('Connection', 'close');
+          req.response.contentLength = successBytes.length;
+          req.response.add(successBytes);
+          await req.response.flush();
+          await req.response.close();
+
+          if (user.isNotEmpty && pass.isNotEmpty && mounted) {
+            _qrReceived = true;
+            setState(() { _userCtrl.text = user; _passCtrl.text = pass; });
+            await _qrServer?.close(force: true);
+            _qrServer = null;
+            await Future.delayed(const Duration(milliseconds: 300));
+            if (mounted) _login();
+          }
+        } else {
+          final html = _loginHtml(url);
+          final bytes = utf8.encode(html);
+          req.response.statusCode = 200;
+          req.response.headers.set('Content-Type', 'text/html; charset=utf-8');
+          req.response.headers.set('Connection', 'close');
+          req.response.headers.set('Cache-Control', 'no-cache, no-store');
+          // contentLength (no headers.set) desactiva el chunked encoding interno de Dart
+          req.response.contentLength = bytes.length;
+          req.response.add(bytes);
+          await req.response.flush();   // flush explícito antes de close por compatibilidad
+          await req.response.close();
+        }
+      } catch (_) {
+        // Si algo falló, intentar cerrar la conexión para que el browser
+        // muestre un error claro en lugar de página en blanco.
+        try { await req.response.close(); } catch (_) {}
       }
     });
   }
