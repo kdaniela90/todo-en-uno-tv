@@ -168,7 +168,7 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
           if (nowMs - lastUpdateMs >= 200 && totalBytes > 20000 && mounted) {
             lastUpdateMs = nowMs;
             final secs = nowMs / 1000.0;
-            final mbps = (totalBytes * 8) / (secs * 1_000_000);
+            final mbps = (totalBytes * 8) / (secs * 1000000);
             setState(() {
               _liveMbps  = mbps;
               _liveGauge = (mbps / _maxScale).clamp(0.0, 1.0);
@@ -184,7 +184,7 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
 
       final seconds = sw.elapsedMilliseconds / 1000.0;
       if (seconds < 0.1 || totalBytes < 50000) return null;
-      return (totalBytes * 8) / (seconds * 1_000_000);
+      return (totalBytes * 8) / (seconds * 1000000);
     } catch (_) {
       return null;
     } finally {
