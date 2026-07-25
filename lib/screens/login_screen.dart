@@ -7,6 +7,7 @@ import '../services/config_service.dart';
 import '../services/storage_service.dart';
 import '../services/xtream_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/animated_remote.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -474,76 +475,92 @@ class _AnimatedLogoState extends State<_AnimatedLogo>
   @override
   Widget build(BuildContext context) {
     final compact = widget.compact;
-    final logoHaloSize = compact ? 120.0 : 200.0;
-    final logoImgSize = compact ? 90.0 : 160.0;
+    // Dimensiones del AnimatedRemote según el espacio disponible
+    final remoteW = compact ? 52.0 : 82.0;
+    final remoteH = compact ? 104.0 : 164.0;
+    // Aura de fondo detrás del remote
+    final auraW = remoteW * 2.2;
+    final auraH = remoteH * 1.4;
+
     return AnimatedBuilder(
-    animation: _ctrl,
-    builder: (_, __) => Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Logo con halo pulsante
-        Stack(alignment: Alignment.center, children: [
-          Container(
-            width: logoHaloSize, height: logoHaloSize,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF5DE0E6).withOpacity(_glow.value * 0.25),
-                  blurRadius: 60, spreadRadius: 20),
-                BoxShadow(
-                  color: const Color(0xFF3372E3).withOpacity(_glow.value * 0.15),
-                  blurRadius: 80, spreadRadius: 10),
-              ],
+      animation: _ctrl,
+      builder: (_, __) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ── Isotipo animado con aura pulsante ───────────────────────────
+          Stack(alignment: Alignment.center, children: [
+            // Aura ovalada detrás del remote
+            Container(
+              width: auraW, height: auraH,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(auraW),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF5DE0E6).withOpacity(_glow.value * 0.22),
+                    blurRadius: 55, spreadRadius: 18),
+                  BoxShadow(
+                    color: const Color(0xFF3372E3).withOpacity(_glow.value * 0.14),
+                    blurRadius: 75, spreadRadius: 8),
+                ],
+              ),
             ),
-          ),
-          Image.asset('assets/images/logo.png', width: logoImgSize, fit: BoxFit.contain),
-        ]),
-
-        SizedBox(height: compact ? 14 : 28),
-
-        // Wordmark con gradiente animado
-        ShaderMask(
-          shaderCallback: (bounds) => LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: const [
-              Color(0xFF5DE0E6), Color(0xFF3372E3),
-              Color(0xFF7426EF), Color(0xFF5DE0E6),
-            ],
-            stops: [
-              (_shift.value * 0.5).clamp(0.0, 0.9),
-              (0.35 + _shift.value * 0.3).clamp(0.1, 0.95),
-              (0.65 + _shift.value * 0.2).clamp(0.2, 1.0),
-              (1.0).clamp(0.3, 1.0),
-            ],
-          ).createShader(bounds),
-          child: Column(children: [
-            Text('TODO EN UNO',
-              style: TextStyle(color: Colors.white, fontSize: compact ? 18 : 27,
-                fontFamily: 'ClashDisplay', fontWeight: FontWeight.w700,
-                letterSpacing: 4)),
-            Text('TV',
-              style: TextStyle(color: Colors.white, fontSize: compact ? 28 : 41,
-                fontFamily: 'ClashDisplay', fontWeight: FontWeight.w700,
-                letterSpacing: 8, height: 0.9)),
+            // AnimatedRemote — el mismo widget que aparece en el header del hub
+            AnimatedRemote(width: remoteW, height: remoteH),
           ]),
-        ),
 
-        SizedBox(height: compact ? 10 : 16),
-        Text('Tu entretenimiento en un solo lugar',
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.3 + _glow.value * 0.2),
-            fontSize: compact ? 10 : 12, letterSpacing: 0.5)),
-        SizedBox(height: compact ? 6 : 10),
-        // Línea decorativa
-        CustomPaint(
-          size: Size(compact ? 100 : 160, 3),
-          painter: _GradientLinePainter(progress: _shift.value),
-        ),
-      ],
-    ),
-  );
+          SizedBox(height: compact ? 20 : 32),
+
+          // ── Wordmark: "TODO EN UNO" con gradiente, "TV" en blanco ────────
+          ShaderMask(
+            shaderCallback: (bounds) => LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: const [
+                Color(0xFF5DE0E6), Color(0xFF3372E3),
+                Color(0xFF7426EF), Color(0xFF5DE0E6),
+              ],
+              stops: [
+                (_shift.value * 0.5).clamp(0.0, 0.9),
+                (0.35 + _shift.value * 0.3).clamp(0.1, 0.95),
+                (0.65 + _shift.value * 0.2).clamp(0.2, 1.0),
+                (1.0).clamp(0.3, 1.0),
+              ],
+            ).createShader(bounds),
+            blendMode: BlendMode.srcIn,
+            child: Text('TODO EN UNO',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: compact ? 18 : 27,
+                fontFamily: 'ClashDisplay',
+                fontWeight: FontWeight.w700,
+                letterSpacing: 4,
+              )),
+          ),
+          // "TV" fuera del ShaderMask — siempre blanco
+          Text('TV',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: compact ? 28 : 41,
+              fontFamily: 'ClashDisplay',
+              fontWeight: FontWeight.w700,
+              letterSpacing: 8,
+              height: 0.9,
+            )),
+
+          SizedBox(height: compact ? 10 : 16),
+          Text('Tu entretenimiento en un solo lugar',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.3 + _glow.value * 0.2),
+              fontSize: compact ? 10 : 12, letterSpacing: 0.5)),
+          SizedBox(height: compact ? 6 : 10),
+          // Línea decorativa
+          CustomPaint(
+            size: Size(compact ? 100 : 160, 3),
+            painter: _GradientLinePainter(progress: _shift.value),
+          ),
+        ],
+      ),
+    );
   }
 }
 

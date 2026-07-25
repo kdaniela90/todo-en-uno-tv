@@ -15,6 +15,7 @@ import 'parental_screen.dart';
 import 'multiview_screen.dart';
 import 'speed_test_sheet.dart';
 import 'reminders_screen.dart';
+import 'downloads_screen.dart';
 
 class HubScreen extends StatefulWidget {
   final Map<String, String> credentials;
@@ -25,7 +26,7 @@ class HubScreen extends StatefulWidget {
 class _HubScreenState extends State<HubScreen> {
   late XtreamService _service;
   int _focused = -1;   // -1 = ninguna tarjeta enfocada
-  final List<FocusNode> _focusNodes = List.generate(8, (_) => FocusNode());
+  final List<FocusNode> _focusNodes = List.generate(9, (_) => FocusNode());
 
   // ── Estado de actualización ───────────────────────────────────────────────
   AppUpdate? _pendingUpdate;
@@ -165,6 +166,11 @@ class _HubScreenState extends State<HubScreen> {
     if (index == 4) {
       Navigator.push(context, MaterialPageRoute(
         builder: (_) => MultiViewScreen(service: _service)));
+      return;
+    }
+    if (index == 5) {
+      Navigator.push(context, MaterialPageRoute(
+        builder: (_) => const DownloadsScreen()));
       return;
     }
     final screens = [
@@ -389,8 +395,9 @@ class _HubScreenState extends State<HubScreen> {
 
   // Fila 2: utilidades
   static const _utilCards = [
-    (Icons.search,            'Buscar',      'Todo el contenido',        Color(0xFF5DE0E6)),
-    (Icons.grid_view_rounded, 'Multi-Vista', 'Hasta 4 canales a la vez', Color(0xFF1DB954)),
+    (Icons.search,                 'Buscar',      'Todo el contenido',        Color(0xFF5DE0E6)),
+    (Icons.grid_view_rounded,      'Multi-Vista', 'Hasta 4 canales a la vez', Color(0xFF1DB954)),
+    (Icons.download_for_offline,   'Descargas',   'Contenido sin conexión',   Color(0xFF7426EF)),
   ];
 
   @override
@@ -421,17 +428,17 @@ class _HubScreenState extends State<HubScreen> {
               const Spacer(),
               // ── Chip de versión/actualización ─────────────────────────────
               if (_updateChecked) _VersionChip(
-                focusNode: _focusNodes[7],
-                isFocused: _focused == 7,
+                focusNode: _focusNodes[8],
+                isFocused: _focused == 8,
                 pendingUpdate: _pendingUpdate,
                 installedVersion: _installedVersion,
                 isPhone: isPhone,
                 onTap: _showUpdateDialog,
               ),
               if (_updateChecked) SizedBox(width: isPhone ? 4 : 6),
-              _TopButton(focusNode: _focusNodes[5], icon: Icons.info_outline, onTap: _showInfo),
+              _TopButton(focusNode: _focusNodes[6], icon: Icons.info_outline, onTap: _showInfo),
               const SizedBox(width: 6),
-              _TopButton(focusNode: _focusNodes[6], icon: Icons.logout, onTap: _logout),
+              _TopButton(focusNode: _focusNodes[7], icon: Icons.logout, onTap: _logout),
             ]),
           ),
           const Divider(color: Colors.white10, height: 1),
@@ -496,17 +503,14 @@ class _HubScreenState extends State<HubScreen> {
             children: List.generate(_utilCards.length, (i) {
               final idx = _mainCards.length + i;
               final c = _utilCards[i];
-              return Padding(
+              return Expanded(child: Padding(
                 padding: EdgeInsets.only(left: i == 0 ? 0 : 14),
-                child: SizedBox(
-                  width: 200,
-                  child: _HeroCard(
-                    focusNode: _focusNodes[idx], isFocused: _focused == idx,
-                    icon: c.$1, title: c.$2, subtitle: c.$3, color: c.$4,
-                    onTap: () => _open(idx),
-                  ),
+                child: _HeroCard(
+                  focusNode: _focusNodes[idx], isFocused: _focused == idx,
+                  icon: c.$1, title: c.$2, subtitle: c.$3, color: c.$4,
+                  onTap: () => _open(idx),
                 ),
-              );
+              ));
             }),
           ),
         ),
