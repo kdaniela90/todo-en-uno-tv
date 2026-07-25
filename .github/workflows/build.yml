@@ -28,7 +28,7 @@ jobs:
         run: flutter pub get
 
       - name: Build APK
-        run: flutter build apk --release --no-obfuscate
+        run: flutter build apk --release --no-obfuscate --android-skip-build-dependency-validation
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
