@@ -38,3 +38,8 @@ flutter:
     - assets/images/icono-live-tv.png
     - assets/images/icono-movies.png
     - assets/images/icono-series.png
+
+  fonts:
+    - family: ClashDisplay
+      fonts:
+        - asset: assets/fonts/ClashDisplay-Variable.ttf

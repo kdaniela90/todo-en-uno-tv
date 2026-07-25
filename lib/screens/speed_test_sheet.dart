@@ -100,12 +100,12 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
     if (!mounted) return;
     setState(() => _phase = _Phase.downloadTest);
 
-    // ── 2. Velocidad de descarga — streaming real (20 MB) ─────────────
+    // ── 2. Velocidad de descarga — streaming real (50 MB primario, 20 MB fallback) ─
     // 3 URLs en cascada; la primera que responda gana
     final result =
-        await _downloadSpeedMbps('https://speed.cloudflare.com/__down?bytes=20000000')
+        await _downloadSpeedMbps('https://speed.cloudflare.com/__down?bytes=50000000')
      ?? await _downloadSpeedMbps('https://proof.ovh.net/files/10Mb.dat')
-     ?? await _downloadSpeedMbps('https://httpbin.org/bytes/1000000')
+     ?? await _downloadSpeedMbps('https://httpbin.org/bytes/5000000')
      ?? -1.0;
 
     if (!mounted) return;
@@ -134,6 +134,8 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
   }
 
   /// Descarga en streaming con actualizaciones en tiempo real del gauge.
+  /// El timer arranca con el PRIMER BYTE recibido, no con el envío del request,
+  /// eliminando DNS + TCP handshake + TTFB del cálculo.
   /// Devuelve Mbps finales o null si falla.
   Future<double?> _downloadSpeedMbps(String url) async {
     final client = http.Client();
@@ -144,14 +146,14 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
       // Mostrar hostname para transparencia
       if (mounted) setState(() => _activeUrl = uri.host);
 
-      final sw = Stopwatch()..start();
       final response = await client
           .send(http.Request('GET', uri))
           .timeout(const Duration(seconds: 15));
 
       if (response.statusCode != 200) return null;
 
-      // Streaming con actualización del gauge cada ~200 ms
+      // Streaming — timer arranca con el primer byte para excluir TTFB
+      final sw = Stopwatch();
       int totalBytes = 0;
       int lastUpdateMs = 0;
       final completer = Completer<int>();
@@ -160,12 +162,13 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
           .timeout(const Duration(seconds: 60))
           .listen(
         (chunk) {
+          if (!sw.isRunning) sw.start(); // primer byte → iniciamos medición
           totalBytes += chunk.length;
           final nowMs = sw.elapsedMilliseconds;
           if (nowMs - lastUpdateMs >= 200 && totalBytes > 20000 && mounted) {
             lastUpdateMs = nowMs;
             final secs = nowMs / 1000.0;
-            final mbps = (totalBytes * 8) / (secs * 1000000);
+            final mbps = (totalBytes * 8) / (secs * 1_000_000);
             setState(() {
               _liveMbps  = mbps;
               _liveGauge = (mbps / _maxScale).clamp(0.0, 1.0);
@@ -177,11 +180,11 @@ class _SpeedTestSheetState extends State<SpeedTestSheet>
         cancelOnError: false,
       );
       totalBytes = await completer.future;
-
       sw.stop();
+
       final seconds = sw.elapsedMilliseconds / 1000.0;
       if (seconds < 0.1 || totalBytes < 50000) return null;
-      return (totalBytes * 8) / (seconds * 1000000);
+      return (totalBytes * 8) / (seconds * 1_000_000);
     } catch (_) {
       return null;
     } finally {

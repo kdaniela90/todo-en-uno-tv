@@ -28,6 +28,8 @@ class _HubScreenState extends State<HubScreen> {
   int _focused = -1;   // -1 = ninguna tarjeta enfocada
   final List<FocusNode> _focusNodes = List.generate(8, (_) => FocusNode());
   AppUpdate? _pendingUpdate;
+  String _installedVersion = '';
+  bool _updateChecked = false;
 
   String get _expDate {
     final raw = widget.credentials['exp_date'] ?? '';
@@ -60,15 +62,22 @@ class _HubScreenState extends State<HubScreen> {
       });
     }
     _checkDailyRefresh();
-    // Verificar actualizaciones en background (sin bloquear la UI)
+    // Cargar versión instalada y verificar actualizaciones en background
+    _loadInstalledVersion();
     Future.delayed(const Duration(seconds: 3), _checkForUpdate);
+  }
+
+  Future<void> _loadInstalledVersion() async {
+    final code = await UpdateService.getInstalledVersionCode();
+    if (mounted) setState(() => _installedVersion = 'build $code');
   }
 
   Future<void> _checkForUpdate() async {
     final update = await UpdateService.checkForUpdate();
-    if (update != null && mounted) {
-      setState(() => _pendingUpdate = update);
-    }
+    if (mounted) setState(() {
+      _pendingUpdate = update;
+      _updateChecked = true;
+    });
   }
 
   void _showUpdateDialog() {
@@ -265,6 +274,9 @@ class _HubScreenState extends State<HubScreen> {
         _infoRow(Icons.person, 'Usuario', widget.credentials['username'] ?? ''),
         const SizedBox(height: 10),
         _infoRow(Icons.language, 'Sitio web', 'todoenunotv.com'),
+        const SizedBox(height: 10),
+        _infoRow(Icons.verified_rounded, 'Versión',
+          _installedVersion.isEmpty ? '…' : _installedVersion),
         const SizedBox(height: 18),
         const Divider(color: Colors.white10),
         const SizedBox(height: 10),
@@ -395,6 +407,7 @@ class _HubScreenState extends State<HubScreen> {
                 style: TextStyle(color: Colors.white, fontSize: isPhone ? 14 : 20,
                   fontWeight: FontWeight.bold, letterSpacing: 1.5)),
               const Spacer(),
+              // Chip de estado: actualización disponible ─ o ─ "Al día"
               if (_pendingUpdate != null)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
@@ -410,12 +423,32 @@ class _HubScreenState extends State<HubScreen> {
                         const Icon(Icons.system_update_rounded,
                           color: Color(0xFFE89B3A), size: 13),
                         const SizedBox(width: 4),
-                        Text('v${_pendingUpdate!.versionName}',
+                        Text('v${_pendingUpdate!.versionName} disponible',
                           style: const TextStyle(
                             color: Color(0xFFE89B3A),
                             fontSize: 11, fontWeight: FontWeight.bold)),
                       ]),
                     ),
+                  ),
+                )
+              else if (_updateChecked && _installedVersion.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.green.withOpacity(0.4), width: 1)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.check_circle_rounded,
+                        color: Color(0xFF4CAF50), size: 12),
+                      const SizedBox(width: 4),
+                      Text(_installedVersion,
+                        style: const TextStyle(
+                          color: Color(0xFF4CAF50),
+                          fontSize: 10, fontWeight: FontWeight.w600)),
+                    ]),
                   ),
                 ),
               _TopButton(focusNode: _focusNodes[6], icon: Icons.info_outline, onTap: _showInfo),

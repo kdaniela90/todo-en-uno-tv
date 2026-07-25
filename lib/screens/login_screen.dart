@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:qr_flutter/qr_flutter.dart';
 import '../services/config_service.dart';
 import '../services/storage_service.dart';
@@ -28,7 +27,6 @@ class _LoginScreenState extends State<LoginScreen> {
   HttpServer? _qrServer;
   String? _qrUrl;
   bool _qrReceived = false;
-  String _logoDataUri = '';
 
   // URL del servidor gestionada remotamente por ConfigService (config.json en GitHub)
 
@@ -48,12 +46,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // ── Auto-start QR server ─────────────────────────────────────────────────
   Future<void> _autoStartQrServer() async {
-    // Logo como base64 para el HTML del móvil
-    try {
-      final bytes = await rootBundle.load('assets/images/logo.png');
-      _logoDataUri = 'data:image/png;base64,${base64Encode(bytes.buffer.asUint8List())}';
-    } catch (_) {}
-
     String? ip;
     try {
       final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4);
@@ -96,7 +88,9 @@ class _LoginScreenState extends State<LoginScreen> {
         final params = Uri.splitQueryString(body);
         final user = params['username'] ?? '';
         final pass = params['password'] ?? '';
-        req.response.write(_successHtml);
+        final successBytes = utf8.encode(_successHtml);
+        req.response.headers.set('Content-Length', successBytes.length.toString());
+        req.response.add(successBytes);
         await req.response.flush();
         await req.response.close();
         if (user.isNotEmpty && pass.isNotEmpty && mounted) {
@@ -108,7 +102,9 @@ class _LoginScreenState extends State<LoginScreen> {
           if (mounted) _login();
         }
       } else {
-        req.response.write(_loginHtml(url, _logoDataUri));
+        final htmlBytes = utf8.encode(_loginHtml(url));
+        req.response.headers.set('Content-Length', htmlBytes.length.toString());
+        req.response.add(htmlBytes);
         await req.response.flush();
         await req.response.close();
       }
@@ -160,42 +156,48 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  static String _loginHtml(String url, String logoDataUri) => '''<!DOCTYPE html>
+  static String _loginHtml(String url) => '''<!DOCTYPE html>
 <html lang="es">
 <head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>Todo en Uno TV</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#060C1B;font-family:-apple-system,sans-serif;min-height:100vh;
-  display:flex;align-items:center;justify-content:center;padding:20px}
+body{background:#060C1B;font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+  min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
 .card{background:#0D1020;border-radius:20px;padding:32px 24px;max-width:340px;
   width:100%;border:1px solid rgba(93,224,230,.15)}
-.logo{text-align:center;margin-bottom:16px}
-.logo img{width:160px;height:auto;display:inline-block}
-.logo-fallback{color:white;font-size:1.4rem;font-weight:700;letter-spacing:2px}
-h1{color:white;font-size:1.1rem;font-weight:700;text-align:center;margin-bottom:4px}
-.sub{color:#5a7a9b;font-size:.8rem;text-align:center;margin-bottom:24px}
-label{color:#5a7a9b;font-size:.75rem;font-weight:600;display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em}
+.brand{text-align:center;margin-bottom:20px}
+.brand-name{color:white;font-size:1.5rem;font-weight:800;letter-spacing:3px;
+  background:linear-gradient(90deg,#5DE0E6,#3372E3);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text}
+.brand-sub{color:#5a7a9b;font-size:.75rem;letter-spacing:.05em;margin-top:2px}
+.sub{color:#5a7a9b;font-size:.82rem;text-align:center;margin-bottom:24px;line-height:1.4}
+label{color:#5a7a9b;font-size:.75rem;font-weight:600;display:block;margin-bottom:6px;
+  text-transform:uppercase;letter-spacing:.06em}
 input{width:100%;padding:14px 16px;background:rgba(255,255,255,.08);
   border:1.5px solid rgba(255,255,255,.12);border-radius:12px;color:white;
-  font-size:16px;margin-bottom:16px;outline:none}
+  font-size:16px;margin-bottom:16px;outline:none;-webkit-appearance:none}
 input:focus{border-color:#5DE0E6}
-button{width:100%;padding:16px;background:linear-gradient(90deg,#5DE0E6,#3372E3);
+button{width:100%;padding:16px;
+  background:linear-gradient(90deg,#5DE0E6,#3372E3);
   border:none;border-radius:12px;color:white;font-size:1rem;
-  font-weight:700;cursor:pointer;margin-top:4px}
+  font-weight:700;cursor:pointer;margin-top:4px;letter-spacing:.5px}
+button:active{opacity:.85}
 </style></head>
 <body><div class="card">
-<div class="logo">
-${logoDataUri.isNotEmpty ? '<img src="$logoDataUri" alt="Todo en Uno TV">' : '<div class="logo-fallback">TODO EN UNO TV</div>'}
+<div class="brand">
+  <div class="brand-name">TODO EN UNO TV</div>
+  <div class="brand-sub">Tu entretenimiento en un solo lugar</div>
 </div>
 <p class="sub">Ingresa tus credenciales desde el teléfono</p>
-<form method="POST" action="/">
+<form method="POST" action="$url">
 <label>Usuario</label>
 <input type="text" name="username" autocomplete="off" autocorrect="off"
-  autocapitalize="off" spellcheck="false" required>
+  autocapitalize="off" spellcheck="false" required placeholder="tu_usuario">
 <label>Contraseña</label>
-<input type="password" name="password" required>
+<input type="password" name="password" required placeholder="••••••">
 <button type="submit">CONECTAR EN TV →</button>
 </form></div></body></html>''';
 
