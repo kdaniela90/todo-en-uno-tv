@@ -208,7 +208,7 @@ body{background:#060C1B;font-family:-apple-system,sans-serif;min-height:100vh;
   display:flex;align-items:center;justify-content:center;padding:20px}
 .card{background:#0D1020;border-radius:20px;padding:40px 24px;max-width:340px;
   width:100%;border:1px solid rgba(93,224,230,.25);text-align:center}
-.icon{font-size:3rem;margin-bottom:16px}
+.icon{font-size:3rem;margin-bottom:16px;color:white}
 h1{color:white;font-size:1.2rem;font-weight:700;margin-bottom:8px}
 p{color:#5a7a9b;font-size:.9rem;line-height:1.6}
 </style></head>
@@ -481,11 +481,13 @@ class _AnimatedLogoState extends State<_AnimatedLogo>
           ).createShader(bounds),
           child: const Column(children: [
             Text('TODO EN UNO',
-              style: TextStyle(color: Colors.white, fontSize: 22,
-                fontWeight: FontWeight.w900, letterSpacing: 4)),
+              style: TextStyle(color: Colors.white, fontSize: 27,
+                fontFamily: 'ClashDisplay', fontWeight: FontWeight.w700,
+                letterSpacing: 4)),
             Text('TV',
-              style: TextStyle(color: Colors.white, fontSize: 36,
-                fontWeight: FontWeight.w900, letterSpacing: 8, height: 0.9)),
+              style: TextStyle(color: Colors.white, fontSize: 41,
+                fontFamily: 'ClashDisplay', fontWeight: FontWeight.w700,
+                letterSpacing: 8, height: 0.9)),
           ]),
         ),
 
