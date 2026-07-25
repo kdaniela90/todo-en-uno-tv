@@ -159,7 +159,8 @@ class _SearchScreenState extends State<SearchScreen> {
                       onTap: () => Navigator.push(context,
                         MaterialPageRoute(builder: (_) => PlayerScreen(
                           title: c.name,
-                          streamUrl: widget.service.liveStreamUrl(c.id)))))),
+                          streamUrl: widget.service.liveStreamUrl(c.id),
+                          isLive: true))))),
                   ],
                   if (_movieResults.isNotEmpty) ...[
                     _SectionHeader('Películas', _movieResults.length,

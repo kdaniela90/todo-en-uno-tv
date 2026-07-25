@@ -527,6 +527,7 @@ class _ChannelTileState extends State<_ChannelTile> {
       channels: widget.channels,
       channelIndex: widget.channelIndex,
       service: widget.service,
+      isLive: true,
     )));
   }
 
@@ -865,6 +866,7 @@ class _PreviewPanelState extends State<_PreviewPanel> {
                     channels: widget.channels,
                     channelIndex: widget.channelIndex,
                     service: widget.service,
+                    isLive: true,
                   )));
               },
             ),

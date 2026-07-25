@@ -19,6 +19,7 @@ class PlayerScreen extends StatefulWidget {
   final List<Channel>? channels;
   final int? channelIndex;
   final XtreamService? service;
+  final bool isLive;
 
   const PlayerScreen({
     super.key,
@@ -28,6 +29,7 @@ class PlayerScreen extends StatefulWidget {
     this.channels,
     this.channelIndex,
     this.service,
+    this.isLive = false,
   });
 
   @override State<PlayerScreen> createState() => _PlayerScreenState();
@@ -287,7 +289,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               curve: Curves.easeInOut,
               bottom: _showControls ? 0 : -120,
               left: 0, right: 0,
-              child: _BottomControls(player: _player),
+              child: _BottomControls(player: _player, isLive: widget.isLive),
             ),
 
           // ── Zapping banner ─────────────────────────────────────────────────
@@ -384,7 +386,8 @@ class _TopBar extends StatelessWidget {
 // ─── Bottom controls ──────────────────────────────────────────────────────────
 class _BottomControls extends StatelessWidget {
   final Player player;
-  const _BottomControls({required this.player});
+  final bool isLive;
+  const _BottomControls({required this.player, this.isLive = false});
 
   @override
   Widget build(BuildContext context) => Container(
@@ -400,7 +403,7 @@ class _BottomControls extends StatelessWidget {
           stream: player.stream.duration,
           builder: (_, durSnap) {
             final dur = durSnap.data ?? Duration.zero;
-            final isLive = dur == Duration.zero;
+            final isLive = this.isLive;
             return StreamBuilder<bool>(
               stream: player.stream.playing,
               builder: (_, playSnap) {

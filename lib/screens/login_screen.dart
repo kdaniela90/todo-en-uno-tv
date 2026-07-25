@@ -240,100 +240,112 @@ p{color:#5a7a9b;font-size:.9rem;line-height:1.6}
   }
 
   // ── Dos columnas: TV / tablet landscape ─────────────────────────────────
-  Widget _twoColumnLayout(BuildContext context) => Row(
-    children: [
-      // ── Columna izquierda: logo animado ──────────────────────────────────
-      Expanded(
-        child: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xFF060C1B), Color(0xFF0A1128)],
+  Widget _twoColumnLayout(BuildContext context) {
+    final height = MediaQuery.of(context).size.height;
+    final isCompact = height < 560; // tablet pequeña (5-6")
+    return Row(
+      children: [
+        // ── Columna izquierda: logo animado ──────────────────────────────────
+        Expanded(
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF060C1B), Color(0xFF0A1128)],
+              ),
+              border: Border(right: BorderSide(color: Colors.white10, width: 1)),
             ),
-            border: Border(right: BorderSide(color: Colors.white10, width: 1)),
+            child: Center(child: _AnimatedLogo(compact: isCompact)),
           ),
-          child: const Center(child: _AnimatedLogo()),
         ),
-      ),
 
-      // ── Columna derecha: formulario + QR inline ───────────────────────────
-      Expanded(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 32),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 380),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _formContent(context),
-                  if (_qrUrl != null) ...[
-                    const SizedBox(height: 28),
-                    _QrInline(url: _qrUrl!),
+        // ── Columna derecha: formulario + QR inline ───────────────────────────
+        Expanded(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.symmetric(
+                horizontal: isCompact ? 24 : 48,
+                vertical: isCompact ? 16 : 32),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 380),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _formContent(context, compact: isCompact),
+                    if (_qrUrl != null) ...[
+                      SizedBox(height: isCompact ? 14 : 28),
+                      _QrInline(url: _qrUrl!, compact: isCompact),
+                    ],
+                    SizedBox(height: isCompact ? 12 : 24),
+                    const Center(child: Text('© 2026 Todo en Uno TV',
+                      style: TextStyle(color: Colors.white24, fontSize: 12))),
                   ],
-                  const SizedBox(height: 24),
-                  const Center(child: Text('© 2026 Todo en Uno TV',
-                    style: TextStyle(color: Colors.white24, fontSize: 12))),
-                ],
+                ),
               ),
             ),
           ),
         ),
-      ),
-    ],
-  );
+      ],
+    );
+  }
 
-  // ── Una columna: teléfono ────────────────────────────────────────────────
-  Widget _singleColumnLayout(BuildContext context, double keyboardH) => Center(
-    child: SingleChildScrollView(
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: EdgeInsets.fromLTRB(32, 36, 32, keyboardH + 40),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 400),
-        child: Column(children: [
-          Image.asset('assets/images/logo.png', width: 120, fit: BoxFit.contain),
-          const SizedBox(height: 28),
-          _formContent(context),
-          const SizedBox(height: 12),
-          SizedBox(width: double.infinity, height: 48,
-            child: OutlinedButton.icon(
-              onPressed: _loading ? null : _showQrDialog,
-              icon: const Icon(Icons.qr_code_scanner, size: 18),
-              label: const Text('Ingresar desde el móvil',
-                style: TextStyle(fontSize: 14, letterSpacing: 0.5)),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.celeste,
-                side: BorderSide(color: AppColors.celeste.withOpacity(0.5)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14))),
-            )),
-          const SizedBox(height: 24),
-          const Center(child: Text('© 2026 Todo en Uno TV',
-            style: TextStyle(color: Colors.white24, fontSize: 12))),
-        ]),
+  // ── Una columna: teléfono / portrait ────────────────────────────────────
+  Widget _singleColumnLayout(BuildContext context, double keyboardH) {
+    final height = MediaQuery.of(context).size.height;
+    final isCompact = height < 600;
+    return Center(
+      child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.fromLTRB(24, isCompact ? 20 : 36, 24, keyboardH + 32),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Column(children: [
+            Image.asset('assets/images/logo.png',
+              width: isCompact ? 80 : 120, fit: BoxFit.contain),
+            SizedBox(height: isCompact ? 16 : 28),
+            _formContent(context, compact: isCompact),
+            const SizedBox(height: 12),
+            SizedBox(width: double.infinity, height: 48,
+              child: OutlinedButton.icon(
+                onPressed: _loading ? null : _showQrDialog,
+                icon: const Icon(Icons.qr_code_scanner, size: 18),
+                label: const Text('Ingresar desde el móvil',
+                  style: TextStyle(fontSize: 14, letterSpacing: 0.5)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.celeste,
+                  side: BorderSide(color: AppColors.celeste.withOpacity(0.5)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14))),
+              )),
+            const SizedBox(height: 20),
+            const Center(child: Text('© 2026 Todo en Uno TV',
+              style: TextStyle(color: Colors.white24, fontSize: 12))),
+          ]),
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   // ── Contenido del formulario (compartido) ────────────────────────────────
-  Widget _formContent(BuildContext context) => Form(
+  Widget _formContent(BuildContext context, {bool compact = false}) => Form(
     key: _formKey,
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text('Iniciar sesión',
+      Text('Iniciar sesión',
         style: TextStyle(color: Colors.white,
-          fontSize: 24, fontWeight: FontWeight.bold)),
-      const SizedBox(height: 6),
-      const Text('Ingresa tus credenciales para continuar',
-        style: TextStyle(color: Colors.white54, fontSize: 14)),
-      const SizedBox(height: 28),
+          fontSize: compact ? 20 : 24, fontWeight: FontWeight.bold)),
+      SizedBox(height: compact ? 3 : 6),
+      Text('Ingresa tus credenciales para continuar',
+        style: TextStyle(color: Colors.white54, fontSize: compact ? 12 : 14)),
+      SizedBox(height: compact ? 16 : 28),
 
       _field(ctrl: _userCtrl, focus: _userFocus, next: _passFocus,
-        label: 'Usuario', icon: Icons.person_rounded,
+        label: 'Usuario', icon: Icons.person_rounded, compact: compact,
         validator: (v) => (v?.isEmpty ?? true) ? 'Ingresa tu usuario' : null),
-      const SizedBox(height: 14),
+      SizedBox(height: compact ? 8 : 14),
       _field(ctrl: _passCtrl, focus: _passFocus,
         label: 'Contraseña', icon: Icons.lock_rounded, obscure: _obscure,
+        compact: compact,
         suffix: IconButton(
           icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off,
             color: Colors.white54),
@@ -342,24 +354,24 @@ p{color:#5a7a9b;font-size:.9rem;line-height:1.6}
         validator: (v) => (v?.isEmpty ?? true) ? 'Ingresa tu contraseña' : null),
 
       if (_error != null) ...[
-        const SizedBox(height: 14),
+        SizedBox(height: compact ? 8 : 14),
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: Colors.red.withOpacity(0.2),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: Colors.red.withOpacity(0.5))),
           child: Row(children: [
-            const Icon(Icons.error_outline, color: Colors.red, size: 18),
+            const Icon(Icons.error_outline, color: Colors.red, size: 16),
             const SizedBox(width: 8),
             Expanded(child: Text(_error!,
-              style: const TextStyle(color: Colors.red, fontSize: 13))),
+              style: const TextStyle(color: Colors.red, fontSize: 12))),
           ]),
         ),
       ],
-      const SizedBox(height: 24),
+      SizedBox(height: compact ? 14 : 24),
 
-      SizedBox(width: double.infinity, height: 54,
+      SizedBox(width: double.infinity, height: compact ? 44 : 54,
         child: ElevatedButton(
           onPressed: _loading ? null : _login,
           style: ElevatedButton.styleFrom(
@@ -385,28 +397,33 @@ p{color:#5a7a9b;font-size:.9rem;line-height:1.6}
     required String label,
     required IconData icon,
     bool obscure = false,
+    bool compact = false,
     Widget? suffix,
     void Function(String)? onSubmit,
     String? Function(String?)? validator,
   }) => TextFormField(
     controller: ctrl, focusNode: focus,
     obscureText: obscure,
-    style: const TextStyle(color: Colors.white, fontSize: 16),
+    style: TextStyle(color: Colors.white, fontSize: compact ? 14 : 16),
     textInputAction: next != null ? TextInputAction.next : TextInputAction.done,
     onFieldSubmitted: onSubmit ?? (_) { if (next != null) next.requestFocus(); },
     decoration: InputDecoration(
       labelText: label,
-      prefixIcon: Icon(icon, color: AppColors.celeste),
+      prefixIcon: Icon(icon, color: AppColors.celeste, size: compact ? 18 : 22),
       suffixIcon: suffix,
       filled: true,
       fillColor: Colors.white.withOpacity(0.09),
+      isDense: compact,
+      contentPadding: compact
+        ? const EdgeInsets.symmetric(horizontal: 12, vertical: 12)
+        : null,
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(14),
         borderSide: BorderSide.none),
       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14),
         borderSide: const BorderSide(color: AppColors.celeste, width: 2.0)),
       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14),
         borderSide: const BorderSide(color: Colors.white24, width: 1.5)),
-      labelStyle: const TextStyle(color: Colors.white70, fontSize: 15),
+      labelStyle: TextStyle(color: Colors.white70, fontSize: compact ? 13 : 15),
     ),
     validator: validator,
   );
@@ -414,7 +431,8 @@ p{color:#5a7a9b;font-size:.9rem;line-height:1.6}
 
 // ─── Logo animado (columna izquierda TV) ─────────────────────────────────────
 class _AnimatedLogo extends StatefulWidget {
-  const _AnimatedLogo();
+  final bool compact;
+  const _AnimatedLogo({this.compact = false});
   @override State<_AnimatedLogo> createState() => _AnimatedLogoState();
 }
 
@@ -437,7 +455,11 @@ class _AnimatedLogoState extends State<_AnimatedLogo>
   @override void dispose() { _ctrl.dispose(); super.dispose(); }
 
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(
+  Widget build(BuildContext context) {
+    final compact = widget.compact;
+    final logoHaloSize = compact ? 120.0 : 200.0;
+    final logoImgSize = compact ? 90.0 : 160.0;
+    return AnimatedBuilder(
     animation: _ctrl,
     builder: (_, __) => Column(
       mainAxisSize: MainAxisSize.min,
@@ -445,7 +467,7 @@ class _AnimatedLogoState extends State<_AnimatedLogo>
         // Logo con halo pulsante
         Stack(alignment: Alignment.center, children: [
           Container(
-            width: 200, height: 200,
+            width: logoHaloSize, height: logoHaloSize,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               boxShadow: [
@@ -458,10 +480,10 @@ class _AnimatedLogoState extends State<_AnimatedLogo>
               ],
             ),
           ),
-          Image.asset('assets/images/logo.png', width: 160, fit: BoxFit.contain),
+          Image.asset('assets/images/logo.png', width: logoImgSize, fit: BoxFit.contain),
         ]),
 
-        const SizedBox(height: 28),
+        SizedBox(height: compact ? 14 : 28),
 
         // Wordmark con gradiente animado
         ShaderMask(
@@ -479,32 +501,33 @@ class _AnimatedLogoState extends State<_AnimatedLogo>
               (1.0).clamp(0.3, 1.0),
             ],
           ).createShader(bounds),
-          child: const Column(children: [
+          child: Column(children: [
             Text('TODO EN UNO',
-              style: TextStyle(color: Colors.white, fontSize: 27,
+              style: TextStyle(color: Colors.white, fontSize: compact ? 18 : 27,
                 fontFamily: 'ClashDisplay', fontWeight: FontWeight.w700,
                 letterSpacing: 4)),
             Text('TV',
-              style: TextStyle(color: Colors.white, fontSize: 41,
+              style: TextStyle(color: Colors.white, fontSize: compact ? 28 : 41,
                 fontFamily: 'ClashDisplay', fontWeight: FontWeight.w700,
                 letterSpacing: 8, height: 0.9)),
           ]),
         ),
 
-        const SizedBox(height: 16),
+        SizedBox(height: compact ? 10 : 16),
         Text('Tu entretenimiento en un solo lugar',
           style: TextStyle(
             color: Colors.white.withOpacity(0.3 + _glow.value * 0.2),
-            fontSize: 12, letterSpacing: 0.5)),
-        const SizedBox(height: 10),
+            fontSize: compact ? 10 : 12, letterSpacing: 0.5)),
+        SizedBox(height: compact ? 6 : 10),
         // Línea decorativa
         CustomPaint(
-          size: const Size(160, 3),
+          size: Size(compact ? 100 : 160, 3),
           painter: _GradientLinePainter(progress: _shift.value),
         ),
       ],
     ),
   );
+  }
 }
 
 class _GradientLinePainter extends CustomPainter {
@@ -530,47 +553,83 @@ class _GradientLinePainter extends CustomPainter {
 // ─── QR inline (columna derecha TV) ──────────────────────────────────────────
 class _QrInline extends StatelessWidget {
   final String url;
-  const _QrInline({required this.url});
+  final bool compact;
+  const _QrInline({required this.url, this.compact = false});
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(20),
-    decoration: BoxDecoration(
-      color: Colors.white.withOpacity(0.04),
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: AppColors.celeste.withOpacity(0.2)),
-    ),
-    child: Column(children: [
-      Row(children: [
-        const Icon(Icons.smartphone, color: AppColors.celeste, size: 18),
-        const SizedBox(width: 8),
-        const Text('Ingresar desde el móvil',
-          style: TextStyle(color: Colors.white70, fontSize: 13,
-            fontWeight: FontWeight.w600)),
-      ]),
-      const SizedBox(height: 4),
-      const Text(
-        'Escanea con la cámara y escribe tus credenciales en el teléfono',
-        style: TextStyle(color: Colors.white38, fontSize: 11)),
-      const SizedBox(height: 16),
-      Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: Colors.white, borderRadius: BorderRadius.circular(12)),
-        child: QrImageView(
-          data: url, version: QrVersions.auto, size: 160,
-          backgroundColor: Colors.white,
-          eyeStyle: const QrEyeStyle(
-            eyeShape: QrEyeShape.square, color: Color(0xFF060C1B)),
-          dataModuleStyle: const QrDataModuleStyle(
-            dataModuleShape: QrDataModuleShape.square, color: Color(0xFF060C1B)),
-        ),
+  Widget build(BuildContext context) {
+    final qrSize = compact ? 110.0 : 160.0;
+    final padding = compact ? 12.0 : 20.0;
+    return Container(
+      padding: EdgeInsets.all(padding),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.celeste.withOpacity(0.2)),
       ),
-      const SizedBox(height: 8),
-      const Text('Misma red WiFi requerida',
-        style: TextStyle(color: Colors.white24, fontSize: 10)),
-    ]),
-  );
+      child: compact
+        // Modo compacto: QR a la derecha, texto a la izquierda
+        ? Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Row(children: [
+                Icon(Icons.smartphone, color: AppColors.celeste, size: 14),
+                SizedBox(width: 6),
+                Text('Ingresar desde\nel móvil',
+                  style: TextStyle(color: Colors.white70, fontSize: 11,
+                    fontWeight: FontWeight.w600, height: 1.3)),
+              ]),
+              const SizedBox(height: 6),
+              const Text('Escanea con la cámara\nen la misma red WiFi',
+                style: TextStyle(color: Colors.white38, fontSize: 10, height: 1.3)),
+            ])),
+            const SizedBox(width: 12),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white, borderRadius: BorderRadius.circular(10)),
+              child: QrImageView(
+                data: url, version: QrVersions.auto, size: qrSize,
+                backgroundColor: Colors.white,
+                eyeStyle: const QrEyeStyle(
+                  eyeShape: QrEyeShape.square, color: Color(0xFF060C1B)),
+                dataModuleStyle: const QrDataModuleStyle(
+                  dataModuleShape: QrDataModuleShape.square, color: Color(0xFF060C1B)),
+              ),
+            ),
+          ])
+        // Modo normal: columna vertical
+        : Column(children: [
+            const Row(children: [
+              Icon(Icons.smartphone, color: AppColors.celeste, size: 18),
+              SizedBox(width: 8),
+              Text('Ingresar desde el móvil',
+                style: TextStyle(color: Colors.white70, fontSize: 13,
+                  fontWeight: FontWeight.w600)),
+            ]),
+            const SizedBox(height: 4),
+            const Text(
+              'Escanea con la cámara y escribe tus credenciales en el teléfono',
+              style: TextStyle(color: Colors.white38, fontSize: 11)),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white, borderRadius: BorderRadius.circular(12)),
+              child: QrImageView(
+                data: url, version: QrVersions.auto, size: qrSize,
+                backgroundColor: Colors.white,
+                eyeStyle: const QrEyeStyle(
+                  eyeShape: QrEyeShape.square, color: Color(0xFF060C1B)),
+                dataModuleStyle: const QrDataModuleStyle(
+                  dataModuleShape: QrDataModuleShape.square, color: Color(0xFF060C1B)),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text('Misma red WiFi requerida',
+              style: TextStyle(color: Colors.white24, fontSize: 10)),
+          ]),
+    );
+  }
 }
 
 // ─── QR Dialog (modo una columna / teléfono) ─────────────────────────────────

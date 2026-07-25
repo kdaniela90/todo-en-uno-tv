@@ -50,6 +50,7 @@ class _EpgSearchScreenState extends State<EpgSearchScreen> {
         channels: widget.channels,
         channelIndex: widget.channels.indexWhere((c) => c.id == ch.id),
         service:  widget.service,
+        isLive: true,
       ),
     ));
   }
