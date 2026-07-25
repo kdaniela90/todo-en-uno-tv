@@ -9,13 +9,12 @@ import '../services/xtream_service.dart';
 import '../services/parental_service.dart';
 import '../services/storage_service.dart';
 import '../services/content_refresh_service.dart';
+import '../services/update_service.dart';
 import '../widgets/animated_remote.dart';
 import 'parental_screen.dart';
 import 'multiview_screen.dart';
 import 'speed_test_sheet.dart';
 import 'reminders_screen.dart';
-import 'downloads_screen.dart';
-import '../services/update_service.dart';
 
 class HubScreen extends StatefulWidget {
   final Map<String, String> credentials;
@@ -27,8 +26,10 @@ class _HubScreenState extends State<HubScreen> {
   late XtreamService _service;
   int _focused = -1;   // -1 = ninguna tarjeta enfocada
   final List<FocusNode> _focusNodes = List.generate(8, (_) => FocusNode());
+
+  // ── Estado de actualización ───────────────────────────────────────────────
   AppUpdate? _pendingUpdate;
-  String _installedVersion = '';
+  int _installedVersion = 1;
   bool _updateChecked = false;
 
   String get _expDate {
@@ -53,7 +54,6 @@ class _HubScreenState extends State<HubScreen> {
       final idx = i;
       _focusNodes[idx].addListener(() {
         if (!mounted) return;
-        // Busca cuál nodo tiene foco ahora (puede ser -1 si ninguno)
         int nowFocused = -1;
         for (int j = 0; j < _focusNodes.length; j++) {
           if (_focusNodes[j].hasFocus) { nowFocused = j; break; }
@@ -62,48 +62,37 @@ class _HubScreenState extends State<HubScreen> {
       });
     }
     _checkDailyRefresh();
-    // Cargar versión instalada y verificar actualizaciones en background
     _loadInstalledVersion();
-    Future.delayed(const Duration(seconds: 3), _checkForUpdate);
+    _checkForUpdate();
   }
 
+  // ── Versión instalada ─────────────────────────────────────────────────────
   Future<void> _loadInstalledVersion() async {
-    final code = await UpdateService.getInstalledVersionCode();
-    if (mounted) setState(() => _installedVersion = 'build $code');
+    final v = await UpdateService.getInstalledVersionCode();
+    if (mounted) setState(() => _installedVersion = v);
   }
 
+  // ── Verificar actualización ───────────────────────────────────────────────
   Future<void> _checkForUpdate() async {
     final update = await UpdateService.checkForUpdate();
-    if (mounted) setState(() {
+    if (!mounted) return;
+    setState(() {
       _pendingUpdate = update;
       _updateChecked = true;
     });
   }
 
-  void _showUpdateDialog() {
-    if (_pendingUpdate == null) return;
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (_) => _UpdateDialog(update: _pendingUpdate!),
-    );
-  }
-
   Future<void> _forceRefresh(BuildContext dialogCtx) async {
-    // 1. Close the info dialog
     Navigator.pop(dialogCtx);
 
-    // 2. Show loading dialog
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => const _RefreshingDialog(),
     );
 
-    // 3. Clear all in-memory caches + update timestamp
     await ContentRefreshService.forceRefresh();
 
-    // 4. Verify connection and get fresh category count
     int liveCount = 0;
     bool connected = false;
     try {
@@ -114,11 +103,9 @@ class _HubScreenState extends State<HubScreen> {
       }
     } catch (_) {}
 
-    // 5. Dismiss loading dialog
     if (!mounted) return;
     Navigator.of(context, rootNavigator: true).pop();
 
-    // 6. Show result snackbar
     final now = DateTime.now();
     final timeStr =
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
@@ -180,11 +167,6 @@ class _HubScreenState extends State<HubScreen> {
         builder: (_) => MultiViewScreen(service: _service)));
       return;
     }
-    if (index == 5) {
-      Navigator.push(context, MaterialPageRoute(
-        builder: (_) => const DownloadsScreen()));
-      return;
-    }
     final screens = [
       LiveScreen(service: _service),
       MoviesScreen(service: _service),
@@ -199,7 +181,6 @@ class _HubScreenState extends State<HubScreen> {
     final hasPinAlready = await ParentalService.hasPin();
 
     if (!hasPinAlready) {
-      // First time: create PIN
       if (!mounted) return;
       final pin1 = await showPinDialog(context, title: 'Crea tu PIN de 4 dígitos');
       if (pin1 == null || pin1.length < 4) return;
@@ -213,7 +194,6 @@ class _HubScreenState extends State<HubScreen> {
       }
       await ParentalService.setPin(pin1);
     } else {
-      // Verify existing PIN
       if (!mounted) return;
       final entered = await showPinDialog(context, title: 'Control Parental\nIngresa tu PIN');
       if (entered == null) return;
@@ -258,6 +238,34 @@ class _HubScreenState extends State<HubScreen> {
     Navigator.pushReplacementNamed(context, '/login');
   }
 
+  // ── Diálogo de actualización ──────────────────────────────────────────────
+  void _showUpdateDialog() {
+    if (_pendingUpdate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Row(children: const [
+          Icon(Icons.check_circle_outline, color: Colors.white, size: 16),
+          SizedBox(width: 8),
+          Text('Ya tienes la versión más reciente'),
+        ]),
+        backgroundColor: Colors.green.withOpacity(0.85),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: const Duration(seconds: 3),
+      ));
+      return;
+    }
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _UpdateDialog(
+        update: _pendingUpdate!,
+        onInstalled: () {
+          if (mounted) setState(() => _pendingUpdate = null);
+        },
+      ),
+    );
+  }
+
   void _showInfo() {
     showDialog(context: context, builder: (ctx) => AlertDialog(
       backgroundColor: const Color(0xFF0D1020),
@@ -267,6 +275,7 @@ class _HubScreenState extends State<HubScreen> {
         const SizedBox(height: 14),
         const Text('TODO EN UNO TV',
           style: TextStyle(color: Colors.white, fontSize: 16,
+            fontFamily: 'ClashDisplay',
             fontWeight: FontWeight.bold, letterSpacing: 1.5)),
         const SizedBox(height: 18),
         _infoRow(Icons.calendar_today, 'Vencimiento', _expDate),
@@ -275,8 +284,7 @@ class _HubScreenState extends State<HubScreen> {
         const SizedBox(height: 10),
         _infoRow(Icons.language, 'Sitio web', 'todoenunotv.com'),
         const SizedBox(height: 10),
-        _infoRow(Icons.verified_rounded, 'Versión',
-          _installedVersion.isEmpty ? '…' : _installedVersion),
+        _infoRow(Icons.info_outline, 'Versión', 'Build $_installedVersion'),
         const SizedBox(height: 18),
         const Divider(color: Colors.white10),
         const SizedBox(height: 10),
@@ -383,7 +391,6 @@ class _HubScreenState extends State<HubScreen> {
   static const _utilCards = [
     (Icons.search,            'Buscar',      'Todo el contenido',        Color(0xFF5DE0E6)),
     (Icons.grid_view_rounded, 'Multi-Vista', 'Hasta 4 canales a la vez', Color(0xFF1DB954)),
-    (Icons.download_rounded,  'Descargas',   'Ver sin internet',          Color(0xFFE89B3A)),
   ];
 
   @override
@@ -404,56 +411,27 @@ class _HubScreenState extends State<HubScreen> {
               AnimatedRemote(width: isPhone ? 18 : 24, height: isPhone ? 36 : 48),
               SizedBox(width: isPhone ? 8 : 12),
               Text('TODO EN UNO TV',
-                style: TextStyle(color: Colors.white, fontSize: isPhone ? 14 : 20,
-                  fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: isPhone ? 14 : 20,
+                  fontFamily: 'ClashDisplay',
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.5,
+                )),
               const Spacer(),
-              // Chip de estado: actualización disponible ─ o ─ "Al día"
-              if (_pendingUpdate != null)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: GestureDetector(
-                    onTap: _showUpdateDialog,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE89B3A).withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xFFE89B3A), width: 1.2)),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        const Icon(Icons.system_update_rounded,
-                          color: Color(0xFFE89B3A), size: 13),
-                        const SizedBox(width: 4),
-                        Text('v${_pendingUpdate!.versionName} disponible',
-                          style: const TextStyle(
-                            color: Color(0xFFE89B3A),
-                            fontSize: 11, fontWeight: FontWeight.bold)),
-                      ]),
-                    ),
-                  ),
-                )
-              else if (_updateChecked && _installedVersion.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.green.withOpacity(0.4), width: 1)),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.check_circle_rounded,
-                        color: Color(0xFF4CAF50), size: 12),
-                      const SizedBox(width: 4),
-                      Text(_installedVersion,
-                        style: const TextStyle(
-                          color: Color(0xFF4CAF50),
-                          fontSize: 10, fontWeight: FontWeight.w600)),
-                    ]),
-                  ),
-                ),
-              _TopButton(focusNode: _focusNodes[6], icon: Icons.info_outline, onTap: _showInfo),
+              // ── Chip de versión/actualización ─────────────────────────────
+              if (_updateChecked) _VersionChip(
+                focusNode: _focusNodes[7],
+                isFocused: _focused == 7,
+                pendingUpdate: _pendingUpdate,
+                installedVersion: _installedVersion,
+                isPhone: isPhone,
+                onTap: _showUpdateDialog,
+              ),
+              if (_updateChecked) SizedBox(width: isPhone ? 4 : 6),
+              _TopButton(focusNode: _focusNodes[5], icon: Icons.info_outline, onTap: _showInfo),
               const SizedBox(width: 6),
-              _TopButton(focusNode: _focusNodes[7], icon: Icons.logout, onTap: _logout),
+              _TopButton(focusNode: _focusNodes[6], icon: Icons.logout, onTap: _logout),
             ]),
           ),
           const Divider(color: Colors.white10, height: 1),
@@ -464,7 +442,7 @@ class _HubScreenState extends State<HubScreen> {
               style: TextStyle(color: Colors.white54, fontSize: isPhone ? 12 : 14)),
           ),
 
-          // CARDS — fila en TV/tablet, grid 2×2 en teléfono
+          // CARDS
           Expanded(
             child: isPhone ? _phoneGrid(context) : _tvRow(context),
           ),
@@ -494,7 +472,6 @@ class _HubScreenState extends State<HubScreen> {
     child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // Fila 1 — En Vivo / Películas / Series
         Expanded(
           flex: 3,
           child: Row(
@@ -512,7 +489,6 @@ class _HubScreenState extends State<HubScreen> {
           ),
         ),
         const SizedBox(height: 14),
-        // Fila 2 — Buscar / Multi-Vista (más pequeñas, centradas)
         Expanded(
           flex: 2,
           child: Row(
@@ -538,7 +514,7 @@ class _HubScreenState extends State<HubScreen> {
     ),
   );
 
-  // Teléfono: grid 2 columnas (3 main + 2 util)
+  // Teléfono: grid 2 columnas
   Widget _phoneGrid(BuildContext context) => GridView.count(
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
     crossAxisCount: 2,
@@ -562,6 +538,258 @@ class _HubScreenState extends State<HubScreen> {
     ],
   );
 }
+
+// ─── Version / Update Chip ────────────────────────────────────────────────────
+class _VersionChip extends StatelessWidget {
+  final FocusNode focusNode;
+  final bool isFocused;
+  final AppUpdate? pendingUpdate;
+  final int installedVersion;
+  final bool isPhone;
+  final VoidCallback onTap;
+
+  const _VersionChip({
+    required this.focusNode,
+    required this.isFocused,
+    required this.pendingUpdate,
+    required this.installedVersion,
+    required this.isPhone,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasUpdate = pendingUpdate != null;
+    final color = hasUpdate ? const Color(0xFFFF8C00) : Colors.green;
+    final icon = hasUpdate ? Icons.system_update_rounded : Icons.check_circle_rounded;
+    final label = hasUpdate
+      ? 'v${pendingUpdate!.versionName}'
+      : 'build $installedVersion';
+
+    return InkWell(
+      focusNode: focusNode,
+      onTap: onTap,
+      focusColor: Colors.transparent,
+      borderRadius: BorderRadius.circular(20),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: EdgeInsets.symmetric(
+          horizontal: isPhone ? 8 : 10,
+          vertical: isPhone ? 4 : 5,
+        ),
+        decoration: BoxDecoration(
+          color: isFocused
+            ? color.withOpacity(0.25)
+            : color.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isFocused ? color : color.withOpacity(0.4),
+            width: isFocused ? 1.5 : 1,
+          ),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, color: color, size: isPhone ? 11 : 13),
+          SizedBox(width: isPhone ? 3 : 4),
+          Text(label,
+            style: TextStyle(
+              color: color,
+              fontSize: isPhone ? 10 : 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.3,
+            )),
+        ]),
+      ),
+    );
+  }
+}
+
+// ─── Update Dialog ────────────────────────────────────────────────────────────
+class _UpdateDialog extends StatefulWidget {
+  final AppUpdate update;
+  final VoidCallback onInstalled;
+  const _UpdateDialog({required this.update, required this.onInstalled});
+  @override State<_UpdateDialog> createState() => _UpdateDialogState();
+}
+
+class _UpdateDialogState extends State<_UpdateDialog> {
+  _DownloadState _state = _DownloadState.idle;
+  double _progress = 0.0;
+  String? _errorMsg;
+  bool _permissionGranted = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkPermission();
+  }
+
+  Future<void> _checkPermission() async {
+    final ok = await UpdateService.canInstallPackages();
+    if (mounted) setState(() => _permissionGranted = ok);
+  }
+
+  Future<void> _startDownload() async {
+    setState(() { _state = _DownloadState.downloading; _progress = 0.0; _errorMsg = null; });
+
+    final path = await UpdateService.downloadApk(
+      widget.update,
+      onProgress: (p) { if (mounted) setState(() => _progress = p); },
+      onError: (e) { if (mounted) setState(() { _state = _DownloadState.error; _errorMsg = e; }); },
+    );
+
+    if (path == null) return;
+    if (!mounted) return;
+    setState(() => _state = _DownloadState.installing);
+
+    try {
+      await UpdateService.installApk(path);
+      widget.onInstalled();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) setState(() { _state = _DownloadState.error; _errorMsg = 'Error al instalar: $e'; });
+    }
+  }
+
+  Future<void> _requestPermission() async {
+    await UpdateService.requestInstallPermission();
+    // Small delay to let the user come back from Settings
+    await Future.delayed(const Duration(seconds: 1));
+    await _checkPermission();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final update = widget.update;
+    return AlertDialog(
+      backgroundColor: const Color(0xFF0D1020),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Row(children: [
+        const Icon(Icons.system_update_rounded, color: Color(0xFFFF8C00), size: 22),
+        const SizedBox(width: 10),
+        const Text('Actualización disponible',
+          style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+      ]),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        // ── Info de versión ────────────────────────────────────────────
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.04),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFFF8C00).withOpacity(0.3))),
+          child: Row(children: [
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Versión ${update.versionName}',
+                style: const TextStyle(color: Colors.white, fontSize: 14,
+                  fontWeight: FontWeight.bold)),
+              const SizedBox(height: 2),
+              Text(update.releaseNotes,
+                style: const TextStyle(color: Colors.white54, fontSize: 11),
+                maxLines: 2, overflow: TextOverflow.ellipsis),
+            ]),
+          ]),
+        ),
+        const SizedBox(height: 14),
+
+        // ── Permiso de instalación ─────────────────────────────────────
+        if (!_permissionGranted) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.orange.withOpacity(0.4))),
+            child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 15),
+                SizedBox(width: 6),
+                Text('Permiso requerido',
+                  style: TextStyle(color: Colors.orange, fontSize: 12,
+                    fontWeight: FontWeight.bold)),
+              ]),
+              SizedBox(height: 4),
+              Text('Para instalar actualizaciones necesitas habilitar '
+                '"Instalar apps desconocidas" en Ajustes.',
+                style: TextStyle(color: Colors.white54, fontSize: 11, height: 1.4)),
+            ]),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.settings_rounded, size: 16),
+              label: const Text('Abrir Ajustes'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.orange,
+                side: const BorderSide(color: Colors.orange),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(vertical: 10)),
+              onPressed: _requestPermission,
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+
+        // ── Progreso de descarga ───────────────────────────────────────
+        if (_state == _DownloadState.downloading) ...[
+          Row(children: [
+            Expanded(child: LinearProgressIndicator(
+              value: _progress,
+              backgroundColor: Colors.white12,
+              valueColor: const AlwaysStoppedAnimation(Color(0xFF5DE0E6)),
+              borderRadius: BorderRadius.circular(4),
+            )),
+            const SizedBox(width: 10),
+            Text('${(_progress * 100).round()}%',
+              style: const TextStyle(color: Colors.white54, fontSize: 12)),
+          ]),
+          const SizedBox(height: 6),
+          const Text('Descargando actualización…',
+            style: TextStyle(color: Colors.white38, fontSize: 11)),
+        ],
+
+        if (_state == _DownloadState.installing) ...[
+          const Row(children: [
+            SizedBox(width: 18, height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation(Colors.white))),
+            SizedBox(width: 10),
+            Text('Iniciando instalador…',
+              style: TextStyle(color: Colors.white70, fontSize: 12)),
+          ]),
+        ],
+
+        if (_state == _DownloadState.error && _errorMsg != null) ...[
+          const SizedBox(height: 4),
+          Row(children: [
+            const Icon(Icons.error_outline, color: Colors.red, size: 14),
+            const SizedBox(width: 6),
+            Expanded(child: Text(_errorMsg!,
+              style: const TextStyle(color: Colors.red, fontSize: 11))),
+          ]),
+        ],
+      ]),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar', style: TextStyle(color: Colors.white38))),
+        if (_state == _DownloadState.idle || _state == _DownloadState.error)
+          ElevatedButton.icon(
+            icon: const Icon(Icons.download_rounded, size: 16),
+            label: const Text('Instalar'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.celeste.withOpacity(0.85),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8)),
+            onPressed: _permissionGranted ? _startDownload : null,
+          ),
+      ],
+    );
+  }
+}
+
+enum _DownloadState { idle, downloading, installing, error }
 
 // ─── Hero Card ────────────────────────────────────────────────────────────────
 class _HeroCard extends StatelessWidget {
@@ -596,7 +824,6 @@ class _HeroCard extends StatelessWidget {
         boxShadow: isFocused ? [BoxShadow(color: color.withOpacity(0.4), blurRadius: 18, spreadRadius: 1)] : [],
       ),
       child: compact
-        // Teléfono: icono + texto en fila
         ? Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(children: [
@@ -611,7 +838,6 @@ class _HeroCard extends StatelessWidget {
               ])),
             ]),
           )
-        // TV/tablet: icono centrado arriba + texto
         : Padding(
             padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 12),
             child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -682,86 +908,5 @@ class _TopButtonState extends State<_TopButton> {
       child: Icon(widget.icon, color: _focused ? AppColors.celeste : Colors.white60,
         size: R.isPhone(context) ? 18 : 22),
     ),
-  );
-}
-
-// ─── Diálogo de actualización ─────────────────────────────────────────────────
-class _UpdateDialog extends StatefulWidget {
-  final AppUpdate update;
-  const _UpdateDialog({required this.update});
-  @override State<_UpdateDialog> createState() => _UpdateDialogState();
-}
-
-class _UpdateDialogState extends State<_UpdateDialog> {
-  bool _downloading = false;
-  double _progress = 0.0;
-  String? _error;
-
-  Future<void> _download() async {
-    setState(() { _downloading = true; _progress = 0.0; _error = null; });
-
-    final path = await UpdateService.downloadApk(
-      widget.update,
-      onProgress: (p) { if (mounted) setState(() => _progress = p); },
-      onError: (e) { if (mounted) setState(() { _downloading = false; _error = e; }); },
-    );
-
-    if (path != null) {
-      try {
-        await UpdateService.installApk(path);
-        if (mounted) Navigator.pop(context);
-      } catch (e) {
-        if (mounted) setState(() { _downloading = false; _error = 'Error al instalar: $e'; });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-    backgroundColor: const Color(0xFF0D1020),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-    title: Row(children: [
-      const Icon(Icons.system_update_rounded, color: Color(0xFFE89B3A), size: 22),
-      const SizedBox(width: 10),
-      Text('Versión ${widget.update.versionName}',
-        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-    ]),
-    content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-      if (widget.update.releaseNotes.isNotEmpty) ...[
-        Text(widget.update.releaseNotes,
-          style: const TextStyle(color: Colors.white70, fontSize: 13)),
-        const SizedBox(height: 16),
-      ],
-      if (_downloading) ...[
-        LinearProgressIndicator(
-          value: _progress > 0 ? _progress : null,
-          backgroundColor: Colors.white12,
-          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFE89B3A)),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          _progress > 0
-            ? 'Descargando… ${(_progress * 100).toInt()}%'
-            : 'Conectando…',
-          style: const TextStyle(color: Colors.white54, fontSize: 12)),
-      ],
-      if (_error != null)
-        Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12)),
-    ]),
-    actions: _downloading ? [] : [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('Después', style: TextStyle(color: Colors.white38))),
-      ElevatedButton.icon(
-        onPressed: _download,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFFE89B3A),
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-        icon: const Icon(Icons.download_rounded, size: 16),
-        label: const Text('Actualizar'),
-      ),
-    ],
   );
 }

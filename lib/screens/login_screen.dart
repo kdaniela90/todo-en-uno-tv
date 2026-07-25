@@ -88,9 +88,7 @@ class _LoginScreenState extends State<LoginScreen> {
         final params = Uri.splitQueryString(body);
         final user = params['username'] ?? '';
         final pass = params['password'] ?? '';
-        final successBytes = utf8.encode(_successHtml);
-        req.response.headers.set('Content-Length', successBytes.length.toString());
-        req.response.add(successBytes);
+        req.response.write(_successHtml);
         await req.response.flush();
         await req.response.close();
         if (user.isNotEmpty && pass.isNotEmpty && mounted) {
@@ -102,9 +100,10 @@ class _LoginScreenState extends State<LoginScreen> {
           if (mounted) _login();
         }
       } else {
-        final htmlBytes = utf8.encode(_loginHtml(url));
-        req.response.headers.set('Content-Length', htmlBytes.length.toString());
-        req.response.add(htmlBytes);
+        final html = _loginHtml(url);
+        final bytes = utf8.encode(html);
+        req.response.headers.set('Content-Length', bytes.length.toString());
+        req.response.add(bytes);
         await req.response.flush();
         await req.response.close();
       }
@@ -163,41 +162,33 @@ class _LoginScreenState extends State<LoginScreen> {
 <title>Todo en Uno TV</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#060C1B;font-family:-apple-system,BlinkMacSystemFont,sans-serif;
-  min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+body{background:#060C1B;font-family:-apple-system,sans-serif;min-height:100vh;
+  display:flex;align-items:center;justify-content:center;padding:20px}
 .card{background:#0D1020;border-radius:20px;padding:32px 24px;max-width:340px;
   width:100%;border:1px solid rgba(93,224,230,.15)}
-.brand{text-align:center;margin-bottom:20px}
-.brand-name{color:white;font-size:1.5rem;font-weight:800;letter-spacing:3px;
-  background:linear-gradient(90deg,#5DE0E6,#3372E3);
+.logo{text-align:center;margin-bottom:20px}
+.logo-text{background:linear-gradient(90deg,#5DE0E6,#3372E3);
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-  background-clip:text}
-.brand-sub{color:#5a7a9b;font-size:.75rem;letter-spacing:.05em;margin-top:2px}
-.sub{color:#5a7a9b;font-size:.82rem;text-align:center;margin-bottom:24px;line-height:1.4}
-label{color:#5a7a9b;font-size:.75rem;font-weight:600;display:block;margin-bottom:6px;
-  text-transform:uppercase;letter-spacing:.06em}
+  background-clip:text;font-size:1.4rem;font-weight:700;letter-spacing:3px}
+.sub{color:#5a7a9b;font-size:.8rem;text-align:center;margin-bottom:24px}
+label{color:#5a7a9b;font-size:.75rem;font-weight:600;display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em}
 input{width:100%;padding:14px 16px;background:rgba(255,255,255,.08);
   border:1.5px solid rgba(255,255,255,.12);border-radius:12px;color:white;
-  font-size:16px;margin-bottom:16px;outline:none;-webkit-appearance:none}
+  font-size:16px;margin-bottom:16px;outline:none}
 input:focus{border-color:#5DE0E6}
-button{width:100%;padding:16px;
-  background:linear-gradient(90deg,#5DE0E6,#3372E3);
+button{width:100%;padding:16px;background:linear-gradient(90deg,#5DE0E6,#3372E3);
   border:none;border-radius:12px;color:white;font-size:1rem;
-  font-weight:700;cursor:pointer;margin-top:4px;letter-spacing:.5px}
-button:active{opacity:.85}
+  font-weight:700;cursor:pointer;margin-top:4px}
 </style></head>
 <body><div class="card">
-<div class="brand">
-  <div class="brand-name">TODO EN UNO TV</div>
-  <div class="brand-sub">Tu entretenimiento en un solo lugar</div>
-</div>
+<div class="logo"><div class="logo-text">TODO EN UNO TV</div></div>
 <p class="sub">Ingresa tus credenciales desde el teléfono</p>
-<form method="POST" action="$url">
+<form method="POST" action="/">
 <label>Usuario</label>
 <input type="text" name="username" autocomplete="off" autocorrect="off"
-  autocapitalize="off" spellcheck="false" required placeholder="tu_usuario">
+  autocapitalize="off" spellcheck="false" required>
 <label>Contraseña</label>
-<input type="password" name="password" required placeholder="••••••">
+<input type="password" name="password" required>
 <button type="submit">CONECTAR EN TV →</button>
 </form></div></body></html>''';
 
@@ -244,7 +235,7 @@ p{color:#5a7a9b;font-size:.9rem;line-height:1.6}
   // ── Dos columnas: TV / tablet landscape ─────────────────────────────────
   Widget _twoColumnLayout(BuildContext context) {
     final height = MediaQuery.of(context).size.height;
-    final isCompact = height < 560; // tablet pequeña (5-6")
+    final isCompact = height < 760; // TVs 720p y tablets pequeñas
     return Row(
       children: [
         // ── Columna izquierda: logo animado ──────────────────────────────────

@@ -28,7 +28,7 @@ class AppUpdate {
 
 // ─── Servicio ─────────────────────────────────────────────────────────────────
 class UpdateService {
-  static const _versionUrl =
+  static const _versionBaseUrl =
       'https://raw.githubusercontent.com/kdaniela90/todo-en-uno-tv/main/version.json';
 
   static const _channel = MethodChannel('com.todoenuno.tv/update');
@@ -36,6 +36,12 @@ class UpdateService {
   // Progreso de descarga activa (0.0 – 1.0)
   static double _dlProgress = 0.0;
   static double get dlProgress => _dlProgress;
+
+  // URL con cache-busting para evitar que el CDN de GitHub sirva versión antigua
+  static String get _versionUrl {
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    return '$_versionBaseUrl?t=$ts';
+  }
 
   // ── Versión instalada (via canal nativo) ─────────────────────────────────
   static Future<int> getInstalledVersionCode() async {
@@ -45,6 +51,24 @@ class UpdateService {
     } catch (_) {
       return 1;
     }
+  }
+
+  // ── Permiso para instalar APKs ────────────────────────────────────────────
+  /// Devuelve true si el permiso ya está concedido (o no es necesario en esta versión de Android).
+  static Future<bool> canInstallPackages() async {
+    try {
+      final result = await _channel.invokeMethod<bool>('canInstallPackages');
+      return result ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Abre la pantalla de Ajustes donde el usuario puede conceder el permiso.
+  static Future<void> requestInstallPermission() async {
+    try {
+      await _channel.invokeMethod('requestInstallPermission');
+    } catch (_) {}
   }
 
   // ── Verificar actualización ───────────────────────────────────────────────
