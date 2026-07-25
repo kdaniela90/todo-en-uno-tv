@@ -14,6 +14,7 @@ import 'parental_screen.dart';
 import 'multiview_screen.dart';
 import 'speed_test_sheet.dart';
 import 'reminders_screen.dart';
+import 'downloads_screen.dart';
 
 class HubScreen extends StatefulWidget {
   final Map<String, String> credentials;
@@ -24,7 +25,7 @@ class HubScreen extends StatefulWidget {
 class _HubScreenState extends State<HubScreen> {
   late XtreamService _service;
   int _focused = -1;   // -1 = ninguna tarjeta enfocada
-  final List<FocusNode> _focusNodes = List.generate(7, (_) => FocusNode());
+  final List<FocusNode> _focusNodes = List.generate(8, (_) => FocusNode());
 
   String get _expDate {
     final raw = widget.credentials['exp_date'] ?? '';
@@ -148,6 +149,11 @@ class _HubScreenState extends State<HubScreen> {
     if (index == 4) {
       Navigator.push(context, MaterialPageRoute(
         builder: (_) => MultiViewScreen(service: _service)));
+      return;
+    }
+    if (index == 5) {
+      Navigator.push(context, MaterialPageRoute(
+        builder: (_) => const DownloadsScreen()));
       return;
     }
     final screens = [
@@ -345,6 +351,7 @@ class _HubScreenState extends State<HubScreen> {
   static const _utilCards = [
     (Icons.search,            'Buscar',      'Todo el contenido',        Color(0xFF5DE0E6)),
     (Icons.grid_view_rounded, 'Multi-Vista', 'Hasta 4 canales a la vez', Color(0xFF1DB954)),
+    (Icons.download_rounded,  'Descargas',   'Ver sin internet',          Color(0xFFE89B3A)),
   ];
 
   @override
@@ -368,9 +375,9 @@ class _HubScreenState extends State<HubScreen> {
                 style: TextStyle(color: Colors.white, fontSize: isPhone ? 14 : 20,
                   fontWeight: FontWeight.bold, letterSpacing: 1.5)),
               const Spacer(),
-              _TopButton(focusNode: _focusNodes[5], icon: Icons.info_outline, onTap: _showInfo),
+              _TopButton(focusNode: _focusNodes[6], icon: Icons.info_outline, onTap: _showInfo),
               const SizedBox(width: 6),
-              _TopButton(focusNode: _focusNodes[6], icon: Icons.logout, onTap: _logout),
+              _TopButton(focusNode: _focusNodes[7], icon: Icons.logout, onTap: _logout),
             ]),
           ),
           const Divider(color: Colors.white10, height: 1),

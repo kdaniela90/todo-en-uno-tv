@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../models/series.dart';
 import '../services/xtream_service.dart';
 import '../services/history_service.dart';
+import '../services/download_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
 import 'player_screen.dart';
@@ -165,6 +166,9 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
         episodes: _currentEpisodes,
         onSeasonChanged: (i) => setState(() => _selectedSeason = i),
         onPlayEpisode: _playEpisode,
+        service: widget.service,
+        seriesName: widget.series.name,
+        poster: _cover.isNotEmpty ? _cover : null,
       ),
     ],
   );
@@ -194,6 +198,9 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
         episodes: _currentEpisodes,
         onSeasonChanged: (i) => setState(() => _selectedSeason = i),
         onPlayEpisode: _playEpisode,
+        service: widget.service,
+        seriesName: widget.series.name,
+        poster: _cover.isNotEmpty ? _cover : null,
       ),
     ],
   );
@@ -236,11 +243,15 @@ class _SeasonsEpisodes extends StatelessWidget {
   final List<Map<String, dynamic>> episodes;
   final ValueChanged<int> onSeasonChanged;
   final ValueChanged<Map<String, dynamic>> onPlayEpisode;
+  final XtreamService service;
+  final String seriesName;
+  final String? poster;
 
   const _SeasonsEpisodes({
     required this.seasonKeys, required this.selectedSeason,
     required this.episodes, required this.onSeasonChanged,
-    required this.onPlayEpisode});
+    required this.onPlayEpisode,
+    required this.service, required this.seriesName, this.poster});
 
   @override
   Widget build(BuildContext context) => Column(
@@ -283,10 +294,21 @@ class _SeasonsEpisodes extends StatelessWidget {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: episodes.length,
-          itemBuilder: (_, i) => _EpisodeTile(
-            episode: episodes[i],
-            onPlay: () => onPlayEpisode(episodes[i]),
-          ),
+          itemBuilder: (_, i) {
+            final ep = episodes[i];
+            final epId = ep['id']?.toString() ?? '';
+            final ext = ep['container_extension']?.toString() ?? 'mp4';
+            final dlUrl = epId.isNotEmpty
+              ? '${service.server}/series/${service.username}/${service.password}/$epId.$ext'
+              : '';
+            return _EpisodeTile(
+              episode: ep,
+              onPlay: () => onPlayEpisode(ep),
+              downloadUrl: dlUrl,
+              seriesName: seriesName,
+              poster: poster,
+            );
+          },
         ),
     ],
   );
@@ -295,18 +317,65 @@ class _SeasonsEpisodes extends StatelessWidget {
 class _EpisodeTile extends StatefulWidget {
   final Map<String, dynamic> episode;
   final VoidCallback onPlay;
-  const _EpisodeTile({required this.episode, required this.onPlay});
+  final String downloadUrl;
+  final String seriesName;
+  final String? poster;
+  const _EpisodeTile({
+    required this.episode,
+    required this.onPlay,
+    required this.downloadUrl,
+    required this.seriesName,
+    this.poster,
+  });
   @override State<_EpisodeTile> createState() => _EpisodeTileState();
 }
 class _EpisodeTileState extends State<_EpisodeTile> {
   bool _focused = false;
   final _fn = FocusNode();
+  bool _isDownloaded = false;
+  bool _isDownloading = false;
+  double _downloadProgress = 0.0;
+
+  String get _epId => widget.episode['id']?.toString() ?? '';
+  String get _downloadId => 'ep_$_epId';
 
   @override void initState() {
     super.initState();
     _fn.addListener(() { if (mounted) setState(() => _focused = _fn.hasFocus); });
+    if (_epId.isNotEmpty) {
+      DownloadService.isDownloaded(_downloadId).then((v) {
+        if (mounted) setState(() => _isDownloaded = v);
+      });
+    }
   }
   @override void dispose() { _fn.dispose(); super.dispose(); }
+
+  Future<void> _download() async {
+    if (_isDownloading || _isDownloaded || _epId.isEmpty) return;
+    setState(() { _isDownloading = true; _downloadProgress = 0.0; });
+    final ext = widget.episode['container_extension']?.toString() ?? 'mp4';
+    final title = widget.episode['title']?.toString() ??
+                  'E${widget.episode['episode_num']?.toString() ?? '?'}';
+    await DownloadService.startDownload(
+      id: _downloadId,
+      name: '${widget.seriesName} · $title',
+      type: 'series',
+      downloadUrl: widget.downloadUrl,
+      ext: ext,
+      poster: widget.poster,
+      onProgress: (p) { if (mounted) setState(() => _downloadProgress = p); },
+      onError: (err) {
+        if (!mounted) return;
+        setState(() { _isDownloading = false; _downloadProgress = 0.0; });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: $err'),
+          backgroundColor: Colors.red.withOpacity(0.85),
+          behavior: SnackBarBehavior.floating,
+        ));
+      },
+    );
+    if (mounted) setState(() { _isDownloading = false; _isDownloaded = true; });
+  }
 
   Map<String, dynamic> get _epInfo =>
     (widget.episode['info'] as Map<String, dynamic>?) ?? {};
@@ -376,6 +445,25 @@ class _EpisodeTileState extends State<_EpisodeTile> {
             ],
           ])),
           const SizedBox(width: 8),
+          // Botón descarga
+          if (_epId.isNotEmpty)
+            GestureDetector(
+              onTap: _isDownloaded ? null : (_isDownloading ? null : _download),
+              child: _isDownloading
+                ? SizedBox(
+                    width: 22, height: 22,
+                    child: CircularProgressIndicator(
+                      value: _downloadProgress > 0 ? _downloadProgress : null,
+                      strokeWidth: 2, color: AppColors.celeste))
+                : Icon(
+                    _isDownloaded
+                      ? Icons.download_done_rounded
+                      : Icons.download_outlined,
+                    color: _isDownloaded
+                      ? Colors.green.shade400
+                      : Colors.white24,
+                    size: isPhone ? 22 : 24)),
+          const SizedBox(width: 6),
           Icon(Icons.play_circle_outline,
             color: _focused ? AppColors.morado : Colors.white30,
             size: isPhone ? 28 : 34),

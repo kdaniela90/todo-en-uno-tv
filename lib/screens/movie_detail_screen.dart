@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../models/movie.dart';
 import '../services/xtream_service.dart';
 import '../services/history_service.dart';
+import '../services/download_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
 import 'player_screen.dart';
@@ -18,6 +19,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   Map<String, dynamic>? _info;
   bool _loading = true;
   bool _isFavorite = false;
+  // Descarga
+  bool _isDownloaded = false;
+  bool _isDownloading = false;
+  double _downloadProgress = 0.0;
 
   @override
   void initState() { super.initState(); _loadData(); }
@@ -26,13 +31,85 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     final results = await Future.wait([
       widget.service.getVodInfo(widget.movie.id),
       HistoryService.isFavorite(HistoryService.movies, widget.movie.id),
+      DownloadService.isDownloaded('movie_${widget.movie.id}'),
     ]);
     if (!mounted) return;
     setState(() {
       _info = results[0] as Map<String, dynamic>?;
       _isFavorite = results[1] as bool;
+      _isDownloaded = results[2] as bool;
       _loading = false;
     });
+  }
+
+  Future<void> _download() async {
+    if (_isDownloading || _isDownloaded) return;
+    setState(() { _isDownloading = true; _downloadProgress = 0.0; });
+
+    final url = widget.service.vodStreamUrl(
+      widget.movie.id, widget.movie.containerExtension);
+    final ext = widget.movie.containerExtension.isEmpty
+      ? 'mp4' : widget.movie.containerExtension;
+
+    await DownloadService.startDownload(
+      id: 'movie_${widget.movie.id}',
+      name: widget.movie.name,
+      type: 'movie',
+      downloadUrl: url,
+      ext: ext,
+      poster: widget.movie.streamIcon.isNotEmpty ? widget.movie.streamIcon : null,
+      onProgress: (p) {
+        if (mounted) setState(() => _downloadProgress = p);
+      },
+      onError: (err) {
+        if (!mounted) return;
+        setState(() { _isDownloading = false; _downloadProgress = 0.0; });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: $err'),
+          backgroundColor: Colors.red.withOpacity(0.85),
+          behavior: SnackBarBehavior.floating,
+        ));
+      },
+    );
+
+    if (mounted) {
+      setState(() { _isDownloading = false; _isDownloaded = true; });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Row(children: [
+          const Icon(Icons.download_done_rounded, color: Colors.white, size: 16),
+          const SizedBox(width: 8),
+          Expanded(child: Text('"${widget.movie.name}" descargada')),
+        ]),
+        backgroundColor: const Color(0xFF1DB954).withOpacity(0.9),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: const Duration(seconds: 3),
+      ));
+    }
+  }
+
+  Future<void> _deleteDownload() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF0D1020),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Eliminar descarga',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: const Text('¿Eliminar el archivo del dispositivo?',
+          style: TextStyle(color: Colors.white60)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.white38))),
+          TextButton(onPressed: () => Navigator.pop(context, true),
+            child: const Text('Eliminar',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    await DownloadService.deleteDownload('movie_${widget.movie.id}');
+    if (mounted) setState(() => _isDownloaded = false);
   }
 
   Future<void> _toggleFavorite() async {
@@ -122,7 +199,17 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         const SizedBox(height: 14),
         if (_cast.isNotEmpty) _CastLine(cast: _cast),
         const SizedBox(height: 20),
-        _PlayButton(onPlay: _play),
+        Row(children: [
+          _PlayButton(onPlay: _play),
+          const SizedBox(width: 12),
+          _DownloadButton(
+            isDownloaded: _isDownloaded,
+            isDownloading: _isDownloading,
+            progress: _downloadProgress,
+            onDownload: _download,
+            onDelete: _deleteDownload,
+          ),
+        ]),
         const SizedBox(height: 20),
         if (_plot.isNotEmpty) _Synopsis(text: _plot),
         if (_backdropPaths.isNotEmpty) ...[
@@ -150,7 +237,17 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         ])),
       ]),
       const SizedBox(height: 16),
-      _PlayButton(onPlay: _play),
+      Row(children: [
+        _PlayButton(onPlay: _play),
+        const SizedBox(width: 10),
+        _DownloadButton(
+          isDownloaded: _isDownloaded,
+          isDownloading: _isDownloading,
+          progress: _downloadProgress,
+          onDownload: _download,
+          onDelete: _deleteDownload,
+        ),
+      ]),
       const SizedBox(height: 16),
       if (_cast.isNotEmpty) _CastLine(cast: _cast),
       if (_plot.isNotEmpty) ...[const SizedBox(height: 14), _Synopsis(text: _plot)],
@@ -166,6 +263,81 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerScreen(
       title: widget.movie.name,
       streamUrl: widget.service.vodStreamUrl(widget.movie.id, widget.movie.containerExtension))));
+  }
+}
+
+// ─── Botón Descarga ──────────────────────────────────────────────────────────
+class _DownloadButton extends StatelessWidget {
+  final bool isDownloaded;
+  final bool isDownloading;
+  final double progress;
+  final VoidCallback onDownload;
+  final VoidCallback onDelete;
+  const _DownloadButton({
+    required this.isDownloaded,
+    required this.isDownloading,
+    required this.progress,
+    required this.onDownload,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (isDownloading) {
+      return SizedBox(
+        height: 44,
+        child: OutlinedButton.icon(
+          onPressed: null,
+          style: OutlinedButton.styleFrom(
+            side: const BorderSide(color: Colors.white24),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+          ),
+          icon: SizedBox(
+            width: 16, height: 16,
+            child: CircularProgressIndicator(
+              value: progress > 0 ? progress : null,
+              strokeWidth: 2,
+              color: AppColors.celeste,
+            ),
+          ),
+          label: Text(
+            progress > 0 ? '${(progress * 100).toInt()}%' : 'Descargando…',
+            style: const TextStyle(color: Colors.white54, fontSize: 13),
+          ),
+        ),
+      );
+    }
+    if (isDownloaded) {
+      return SizedBox(
+        height: 44,
+        child: OutlinedButton.icon(
+          onPressed: onDelete,
+          style: OutlinedButton.styleFrom(
+            side: BorderSide(color: Colors.green.shade700),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+          ),
+          icon: Icon(Icons.download_done_rounded, color: Colors.green.shade400, size: 18),
+          label: Text('Descargado',
+            style: TextStyle(color: Colors.green.shade400, fontSize: 13)),
+        ),
+      );
+    }
+    return SizedBox(
+      height: 44,
+      child: OutlinedButton.icon(
+        onPressed: onDownload,
+        style: OutlinedButton.styleFrom(
+          side: const BorderSide(color: Colors.white30),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+        ),
+        icon: const Icon(Icons.download_rounded, color: Colors.white60, size: 18),
+        label: const Text('Descargar',
+          style: TextStyle(color: Colors.white60, fontSize: 13)),
+      ),
+    );
   }
 }
 
