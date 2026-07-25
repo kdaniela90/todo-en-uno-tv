@@ -13,9 +13,7 @@ dependencies:
   http: ^1.2.0
   shared_preferences: ^2.2.2
   provider: ^6.1.1
-  # video_player se mantiene para live_screen (mini-preview) y multiview
   video_player: ^2.8.2
-  # media_kit reemplaza chewie en player_screen (soporta selección de pistas)
   media_kit: ^1.1.10
   media_kit_video: ^1.2.4
   media_kit_libs_video: ^1.0.4
@@ -26,6 +24,9 @@ dependencies:
   timezone: ^0.9.4
   wakelock_plus: ^1.1.4
   connectivity_plus: ^6.0.3
+
+dependency_overrides:
+  package_info_plus: ^8.1.0
 
 dev_dependencies:
   flutter_test:
