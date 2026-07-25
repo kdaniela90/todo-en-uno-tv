@@ -33,6 +33,27 @@ jobs:
       - name: Build APK
         run: flutter build apk --release --no-obfuscate --android-skip-build-dependency-validation
 
+      - name: Generate version.json
+        run: |
+          VERSION_CODE=$(grep '^version:' pubspec.yaml | grep -oP '\+\K[0-9]+')
+          VERSION_NAME=$(grep '^version:' pubspec.yaml | grep -oP '[0-9]+\.[0-9]+\.[0-9]+')
+          cat > version.json << EOF
+          {
+            "versionCode": $VERSION_CODE,
+            "versionName": "$VERSION_NAME",
+            "downloadUrl": "https://github.com/kdaniela90/todo-en-uno-tv/releases/download/latest/app-release.apk",
+            "releaseNotes": "Nueva versión disponible. Actualiza para obtener las últimas mejoras."
+          }
+          EOF
+
+      - name: Commit version.json
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add version.json
+          git diff --staged --quiet || git commit -m "chore: update version.json [skip ci]"
+          git push
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
